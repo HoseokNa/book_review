@@ -3,6 +3,7 @@
 
 # Contents
 - [What is this?](#what-is-this?)
+- [You Don't Know JS(타입과 문법)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(TYPE_GRAMMAR))
 
  # What is this?
 
