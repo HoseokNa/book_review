@@ -5,6 +5,7 @@
 * [2-1 배열](#2-1-배열)
 * [2-2 문자열](#2-2-문자열)
 * [2-3 숫자](#2-3-숫자)
+* [2-4 특수 값](#2-4-특수-값)
 
 ## 2-1 배열
 
@@ -408,3 +409,174 @@ if (!Number.isSafeInteger) {
 정수의 '안전 범위'가 대략 9천 조(53비트)에 이르지만, (비트 연산처럼) 32비트 숫자에만 가능한 연산이 있으므로 실제 범위는 훨씬 줄어든다. 따라서 정수의 안전 범위는 Math.pow(-2,31) 에서 Math.po(2,31) - 1 까지다. (약 -21억 ~ 21억)
 
 a | 0 과 같이 쓰면 '숫자 값 -> 32비트 부호 있는 정수'로 강제 변환됨.
+
+## 2-4 특수 값
+
+타입벼로 자바스크립트 개발자들이 조심해서 사용해야 할 특수한 값들이 있다.
+
+### 2-4-1 값 아닌 값
+
+Undefined 타입의 값은 undefined 밖에 없다. null 타입도 값은 null 뿐이다. 그래서 이 둘은 타입과 값이 항상 같다.
+
+undefined와 null은 종종 '빈(empty)' 값과 '값 아닌(Nonvalue)' 값을 나타낸다. 이와 다른 의미로 사용하는 개발자도 있다. 예를 들면,
+
+* null은 빈 값이다.
+* undefined는 실종된(Missing) 값이다.
+
+또는
+
+* null은 예전에 값이 있었지만 지금은 없는 상태다.
+* undefined는 값을 아직 가지지 않은 것이다.
+
+null은 식별자가 아닌 특별한 키워드이므로 null이라는 변수에 뭔가 할당할 수 없지만 undefined는 식별자로 쓸 수 있다.
+
+### 2-4-2 Undefined
+
+느슨한 모드에서는 전역 스코프에서 undefined란 식별자에 값을 할당할 수 있다(절대 추천 놉!)
+
+```js
+function foo() {
+	undefined = 2; // 정말 좋은 생각 아님!
+}
+
+foo();
+
+function foo() {
+	"use strict";
+	undefined = 2; // 타입 에러 발생!
+}
+
+foo();
+```
+
+그런데 모드에 상관 없이 undefined란 이름을 가진 지역 변수는 생성 할 수 있다.(절대 추천 놉)
+
+```js
+function foo() {
+	"use strict";
+	var undefined = 2;
+	console.log( undefined ); // 2
+}
+
+foo();
+```
+
+void 연산자
+
+표현신 void __ 는 어떤 값이든 '무효로 만들어', 항상 결괏값을 undefined로 만든다. 기존 값은 건드리지 않고 연산 후 값은 복구할 수 없다.
+
+```js
+var a = 42;
+
+console.log( void a, a ); // undefined 42
+```
+
+관례에 따라 void 만으로 undefined 값을 나타내려면 void 0이라고 쓴다. void 0, void 1, undefined 모두 같다.
+
+void 연산자는 어떤 표현식의 결괏값이 덦다는 걸 확실히 밝혀야 할 때 요긴한게 사용할 수 있다.
+
+```js
+function doSomething() {
+	// 참고: `APP.ready`는 이 애플리케이션에서 제공한 값
+	if (!APP.ready) {
+		// 나중에 다시 해좌
+		return void setTimeout( doSomething, 100 );
+	}
+
+	var result;
+
+	// 별로 처리 수행
+
+	return result;
+}
+
+// were we able to do it right away?
+if (doSomething()) {
+	// handle next tasks right away
+}
+```
+
+하지만 아래와 같이 두 줄로 분리해서 사용하는 걸 더 선호한다
+
+```js
+if (!APP.ready) {
+	// 나중에 다시 해보자
+	setTimeout( doSomething, 100 );
+	return;
+}
+```
+
+정리하면 void 연산자는 (어떤 표혀신으로부터) 값이 존재하는 곳에서 그 값이 undefined가 되어야 좋을 경우에만 사용하자.
+
+### 2-4-3 특수 숫자
+
+NaN은 '숫자 아님(Not A Number)'보다는 '유요하지 않은 숫자', '실패한 숫자', 또는 '몹쓸 숫자'라고 하는게 더 정확하다.
+
+```js
+var a = 2 / "foo";		// NaN
+
+typeof a === "number";	// true
+```
+
+'숫자 아님(Not A Number)의 typeof는 숫자다!'
+
+NaN은 경게 값의 일종으로 숫자 집합 내에서 특별한 종류의 에러 상황을 나타낸다.("난 당신이 내준 수학 연산을 해봤찌만 실패했어 그러니 여기 실패한 숫자를 도로 가져가)
+
+```js
+var a = 2 / "foo";  // NaN
+
+a == NaN;	// false
+a === NaN;	// false
+```
+
+NaN은 다른 어떤 NaN과도 동등하지 않다. 사실상 반사성(Reflexive)이 없는 유일무이한 값이다. 그럼 NaN 여부는 어떻게 확인 할 수 있을까?
+
+```js
+var a = 2 / "foo";
+
+isNaN( a ); // true
+```
+
+isNaN() 함수 사용. 하지만 isNaN()은 '인자 값이 숫자인지 여부를 평가'하는 함수.
+
+```js
+var a = 2 / "foo";
+var b = "foo";
+
+a; // NaN
+b; // "foo"
+
+window.isNaN( a ); // true
+window.isNaN( b ); // true -- 허걱
+```
+
+ES6부터는 Number.isNaN() 사용. 다음 폴리필 사용해서 체크 가능.
+
+```js
+if (!Number.isNaN) {
+	Number.isNaN = function(n) {
+		return (
+			typeof n === "number" &&
+			window.isNaN( n )
+		);
+	};
+}
+
+var a = 2 / "foo";
+var b = "foo";
+
+Number.isNaN( a ); // true
+Number.isNaN( b ); // false 휴
+```
+
+아래와 같이도 작성 가능
+
+```js
+if (!Number.isNaN) {
+	Number.isNaN = function(n) {
+		return n !== n;
+	};
+}
+```
+
+의미를 오해하지 않고 바르게 쓰려면 Number.isNaN() 같은 (또는 폴리필) 내장 유틸리티를 사용하자.
