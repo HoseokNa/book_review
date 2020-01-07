@@ -230,3 +230,36 @@ Number( "" );			// 0
 Number( [] );			// 0
 Number( [ "abc" ] );	// NaN
 ```
+
+### 4-2-3 ToBoolean
+
+자바스크립트에는 true와 false라는 키워드가 존재한다. 그리고 1을 true로, 0을 false로 (역방향도 마찬가지) 강제변환할 수는 있지만 그렇다고 두 값이 똑같은 건 아니다.
+
+#### Falsy 값
+
+true/false가 아닌 값을 boolean에 상당한 값으로 강제 변환하면 어떻게 작동할까?
+
+다음 둘 중 하나다.
+1. boolean으로 강제변환하면 false가 되는 값
+2. 1번을 제외한 나머지(즉 명백히 true인 값)
+
+명세가 정의한 'falsy' 값은 다음과 같다.
+* undefined
+* null
+* false
+* +0, -0, NaN
+* ""
+
+이게 전부다. 이 'falsy' 값을 boolean으로 강제변환하면 false다.
+
+'truthy' 값 목록은 없지만 'falsy' 값 목록에 없으면 응당 'truthy' 값이 된다.
+
+| 인자타입 | 결괏값 |
+| --- | --- |
+| `Undefined` | false |
+| `Null` | false |
+| `Boolean` | 인자 값과 동일(변환 안함) |
+| `Number` | +0, -0, NaN이면 false, 그 외에는 true |
+| `String` | 인자가 공백 문자열(length가 0)이면 false, 그 외에는 true |
+| `Object` | true |
+
