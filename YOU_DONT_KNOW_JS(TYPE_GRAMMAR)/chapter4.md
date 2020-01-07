@@ -188,3 +188,45 @@ JSON.stringify( a, null, "-----" );
 JSON.stringfy()는 직접적인 강제변환의 형식은 아니지만 두 가지 이유로 ToString 강제 변환과 연관된다.
 1. 문자열, 숫자, 불리언, null 값이 JSON으로 문자열화하는 방식은 ToString 추상 연산의 규칙에 따라 문자열 값으로 강제변환되는 방식과 동일하다.
 2. JSON.stringfy()에 전달한 객체가 자체 toJSON() 메서드를 갖고 있다면, 문자열화 전 toJSON()이 자동 호출되어 JSON 안전 값으로 '강제변환' 된다. 
+
+### 4-2-2 ToNumber
+
+'숫자 아닌 값 -> 수식 연산이 가능한 숫자' 변환 로직은 ES5 9.3 ToNumber 추상 연산에 잘 정의되어 있다.
+
+ex) true => 1, false => 0, undefined => NaN, (희한하게도) null => 0
+
+문자열 값에 ToNumber를 적용하면 대부분 숫자 리터럴 규칙/구문과 비슷하게 작동한다. 변환이 실패하면 (숫자 리터럴 구문 에러가 아닌) 결과는 NaN이다. 한가지 다른 점은 0이 앞에 붙은 8진수는 ToNumber에서 올바른 숫자 리터럴이라도 8진수로 처리하지 않는다.(일반 10진수로 처리)
+
+객체(그리고 배열)는 일단 동등한 원시 값으로 변환 후 그 결괏값(아직 숫자가 아닌 원시 값)을 ToNumber 규칙에 의해 강제 변환한다.
+
+동등한 원시 값으로 바꾸기 위해 ToPrimitive 추상 연산 과정에서 해당 객체가 valueOf() 메서드를 구현했는지 확인한다. ValueOf()를 쓸 수 있고 반환 값이 원시 값이면 그대로 강제변환 한다. 그렇지 않을 경우 toString() 메서드가 존재하면 toString()을 이용하여 강제변환 한다.
+
+어찌해도 원시 값으로 바꿀 수 없을 땐 TypeError 오류를 던진다.
+
+ES5 부터는 [[Prototype]]이 null인 경우 대부분 Object.create(null)를 이용하여 강제변환이 불가능한 객체(valueOf(), toString()이 없는 객체)를 생성할 수 있다.
+
+```js
+var a = {
+	valueOf: function(){
+		return "42";
+	}
+};
+
+var b = {
+	toString: function(){
+		return "42";
+	}
+};
+
+var c = [4,2];
+c.toString = function(){
+	return this.join( "" );	// "42"
+};
+
+Number( a );			// 42
+Number( b );			// 42
+Number( c );			// 42
+Number( "" );			// 0
+Number( [] );			// 0
+Number( [ "abc" ] );	// NaN
+```
