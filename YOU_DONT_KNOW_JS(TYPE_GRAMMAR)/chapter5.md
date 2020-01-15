@@ -240,7 +240,7 @@ vowels( "Hello World" ); // ["e","o","o"]
 function vowels(str) {
 	var matches;
 
-	// pull out all the vowels
+	// 모든 모음을 추출한다.
 	if (str && (matches = str.match( /[aeiou]/g ))) {
 		return matches;
 	}
@@ -248,3 +248,7 @@ function vowels(str) {
 
 vowels( "Hello World" ); // ["e","o","o"]
 ```
+
+ NOTE: matches = str.match( /[aeiou]/g) 를 감싸는 ( )를 빠뜨리면 안된다.
+
+ 두 조건이 서로 분명히 연관되어 있음을 잘 보여주기 때문에 필자는 후자를 더 선호하는 편이다. 물론 취향 차이. 
