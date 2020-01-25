@@ -12,4 +12,4 @@
 # Book List
 
 - [You Don't Know JS(타입과 문법)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(TYPE_GRAMMAR))
-- [You Don't Know JS(스코프와 클로저)](ttps://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(SCOPE&CLOSURES))
+- [You Don't Know JS(스코프와 클로저)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(SCOPE_CLOSURES))
