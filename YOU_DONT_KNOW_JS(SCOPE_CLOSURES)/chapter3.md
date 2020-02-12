@@ -3,6 +3,8 @@
 * [3-1 함수 기반 스코프](#3-1-함수-기반-스코프)
 * [3-2 일반 스코프에 숨기](#3-2-일반-스코프에-숨기)
 * [3-3 스코프 역할을 하는 함수](#3-3-스코프-역할을-하는-함수)
+* [3-4 스코프 역할을 하는 블록](#3-4-스코프-역할을-하는-블록)
+* [3-5 정리하기](#3-5-정리하기)
 
 ## 3-1 함수 기반 스코프
 
@@ -269,3 +271,240 @@ var a = 2;
 ```
 
 함수 표현식 def는 코드 후반부에 정의되어 코드 전반부에 정의된 IIFE 함수에 (def라는 이름의) 인자로 넘겨진다. 결국, 인자 함수 def가 호출되고 window가 global 인자로 넘겨진다.
+
+## 3-4 스코프 역할을 하는 블록
+
+블록 스코프의 목적은 변수를 최대한 사용처 가까이에서 최대한 작은 유효 범위를 갖도록 선언하는 것이다.
+
+```js
+var foo = true;
+
+if (foo) {
+  var bar = foo * 2;
+  bar = something(bar);
+  console.log(bar);
+}
+```
+
+변수 bar는 오직 if 문 안에서만 사용하므로, bar를 if 블록 안에 선언하는 것은 타당하다. 그러나 사실 var를 사용할 때 변수를 어디에서 선언하는지는 중요한 문제가 아니다. 선언된 변수는 항상 둘러싸인 스코프에 속하기 때문이다. 위의 코드는 보기에만 스코프처럼 보이는 '가짜' 블록 스코프로, bar를 의도치 않게 다른 곳에서 사용하지 않도록 상기시키는 역할을 할 뿐이다.
+
+블록 스코프는 앞서 언급한 '최소 권한 노출의 원칙'을 확장하여 정보를 함수 안에 숨기고, 나아가 정보를 코드 블록 안에 숨기기 위한 도구다.
+
+```js
+for (var i = 0; i < 10; i++) {
+  console.log(i);
+}
+```
+
+오직 for 반복문에서만 사용될 변수 i로 함수 스코프 전체를 왜 오염시켜야 할까?
+
+블록 스코프를 사용한다면(가능했다고 치자) 변수 i는 오직 for 반복문 안에서만 사용할 수 있고, 이외 함ㅅ ㅜ어느 곳에서 접근하더라도 오류가 발생할 것이다. 이는 변수가 혼란스럽고 유지 보수하기 어려운 방식으로 재사용되지 않도록 막는다.
+
+그러나 적어도 외견상으로 자바스크립트는 블록 스코프를 지원하지 않는다. 물론, 좀 더 파고들면 방법은 있다.
+
+### 3-4-1 with
+
+with는 지양해야할 구조이지만 블록 스코프의 형태를 보여주는 한 예다. with 문 안에서 생성된 객체는 바깥 스코프에 영향 주는 일 없이 with 문이 끝날 때까지만 존재한다.
+
+### 3-4-2 try-catch
+
+자바스크립트 ES3에서 try/catch 문 중 catch 부분에서 선언된 변수는 catch 블록 스코프에 속한다.
+
+```js
+try {
+  undefined(); // 에러 발생
+}
+catch (err) {
+  console.log(err); // 동작!
+}
+
+console.log(err); // ReferenceError: 'err' not found
+```
+
+catch 문의 블록 스코프 효과는 쓸데없고 학술적인 것처럼 느껴질 수 있지만, 부록 B를 보면 이 기능을 어떻게 유용하게 활용할 수 있는지 알 수 있다.
+
+### 3-4-3 let
+
+키워드 let은 선언된 변수를 둘러싼 아무 블록(일반적으로 {})의 스코프에 붙인다. 바꿔 말해, 명시적이진 않지만 let은 선언한 변수를 위해 해당 블록 스코프를 이용한다고 말할 수 있다.
+
+```js
+var foo = true;
+
+if (foo) {
+  let bar = foo * 2;
+  bar = something(bar);
+  console.log(bar);
+}
+
+console.log(bar); // ReferenceError
+```
+
+let을 이용해 변수를 현재 블록에 붙이는 것은 약간 비명식적이다. 코드를 작성하다 보면 블록이 왔다 갔다 하고 다른 블록으로 감싸기도 하는데, 이럴 때 주의하지 않으면 변수가 어느 블록 스코프에 속한 것인지 착각하기 쉽다.
+
+블록 스코프에 사용하는 블록을 명시적으로 생성하면 이런 문제를 해결할 수 있다.
+
+```js
+var foo = true;
+
+if (foo) {
+  { // explicit block
+    let bar = foo * 2;
+    bar = something(bar);
+    console.log(bar);
+  }
+}
+
+console.log(bar); // ReferenceError
+```
+
+그저 {}를 문법에 맞게 추가만 해도 let을 통해 선언된 변수를 묶을 수 있는 임의의 블록을 생성할 수 있다.
+
+2부 4장에서는 호이스팅(Hoisting)에 대해 배울 것이다. 호이스팅은 선언문이 어디에서 선언됐든 속하는 스코프 전체에서 존재하는 것처럼 취급되는 작용을 말한다. 그러나 let을 사용한 선언문은 속하는 스코프에서 호이스팅 효과를 받지 않는다. 따라서 let으로 선언된 변수는 실제 선언문 전에는 명백하게 '존재'하지 않는다.
+
+```js
+{
+  console.log(bar); // ReferenceError!
+  let bar = 2;
+}
+```
+
+#### 가비지 콜렉션(Garbage Collection)
+
+블록 스코프가 유용한 또 다른 이유는 메모리를 회수하기 위한 클로저 그리고 가비지 콜렉션과 관련 있다. 여기서는 간단히 다루지만, 클로저의 메커니즘은 2부 5장에서 자세히 설명하겠다.
+
+```js
+function process(data) {
+  // do something interesting
+}
+
+var someReallyBigData = {};
+
+process(someReallyBigData);
+
+var btn = document.getElementById("my_button");
+
+btn.addEventListener("click", function click(evt){
+  console.log("button clicked");
+}, /*capturingPhase=*/false);
+```
+
+클릭을 처리하는 click 함수는 someReallyBigData 변수가 전혀 필요 없다. 따라서 이론적으로는 process()가 실행된 후 많은 메모리를 먹는 자료 구조인 someReallyBigData는 수거할 수 있다. 그러나 자바스크립트 엔진은 그 데이터를 여전히 남겨둘 것이다. click 함수가 해당 스코프 전체의 클로저를 가지고 있기 때문이다.
+
+블록 스코프는 엔진에게 someReallyBigData가 더는 필요 없다는 사실을 더 명료하게 알려서 이 문제를 해결할 수 있다.
+
+```js
+function process(data) {
+  // do something interesting
+}
+
+// 이 블록 안에 선언된 어떠한 변수들도 블록과 함께 다른 곳으로 이동할 있다.
+{
+  var someReallyBigData = {};
+
+  process(someReallyBigData);
+}
+
+var btn = document.getElementById("my_button");
+
+btn.addEventListener("click", function click(evt){
+  console.log("button clicked");
+}, /*capturingPhase=*/false);
+```
+
+명시적으로 블록을 선언하여 변수의 영역을 한정한느 것은 효과적인 코딩 방식이므로 익혀두면 좋다.
+
+#### let 반복문
+
+```js
+for (let i = 0; i < 10; i++) {
+  console.log(i);
+}
+
+console.log(i); // ReferenceError
+```
+
+let은 단지 i를 for 반복문에 묶었을 뿐만 아니라 반복문이 돌 때마다 변수를 다시 묶어서 이전 반복의 결괏값이 제대로 들어가도록 한다.
+
+다음 예제는 반복마다 다시 묶는 작용을 보여준다.
+
+```js
+{
+  let j;
+  for (j = 0; j < 10; j++) {
+    let i = j;  // re-bound for each iteration!
+    console.log(i);
+  }
+}
+```
+
+let 선언문은 둘러싼 함수 (또는 글로벌) 스코프가 아니라 가장 가까운 임의의 블록에 변수를 붙인다. 따라서 이전에 var 선언문을 사용해서 작성된 코드는 함수 스코프와 숨겨진 연계가 있을 수 있으므로 코드 리팩토링을 위해서는 단순히 var를 let으로 바꾸는 것 이상의 노력이 필요하다.
+
+```js
+var foo = true, baz = 10;
+
+if (foo) {
+  var bar = 3;
+  if (baz > bar) {
+    console.log(baz);
+  }
+
+  // ...
+}
+```
+
+위의 코드는 다음과 같이 쉽게 리팩토링된다.
+
+```js
+var foo = true, baz = 10;
+
+if (foo) {
+  var bar = 3;
+  // ...
+}
+
+if (baz > bar) {
+  console.log(baz);
+}
+```
+
+그러나 블록 스코프 변수를 사용한다면 이와 같은 수정을 하기 전에 주의해야 한다.
+
+```js
+var foo = true, baz = 10;
+
+if (foo) {
+  let bar = 3;
+
+  if (baz > bar) {  // 옮길 때 'bar'를  까먹지 마라
+    console.log(baz);
+  }
+}
+```
+
+### 3-4-4 const
+
+ES6에서는 키워드 let과 함께 const도 추가됐다. 키워드 const 역시 블록 스코프를 생성하지만, 선언된 값은 고정된다(상수). 선언된 후 const의 값을 변경하려고 하면 오류가 발생한다.
+
+```js
+var foo = true;
+
+if (foo) {
+  var a = 2;
+  const b = 3; // block-scoped to the containing 'if'
+  a = 3; // just fine!
+  b = 4; // error
+}
+
+console.log(a); // 3
+console.log(b); // ReferenceError!
+```
+
+## 3-5 정리하기
+
+자바스크립트에서 함수는 스코프를 이루는 가장 흔한 단위다. 다른 함수 안에서 선언된 변수와 함수는 본질적으로 다른 '스코프'로부터 '숨겨진' 것이다. 이는 좋은 소프트웨어를 위해 적용해야 할 디자인 원칙이다.
+
+그러나 함수는 결코 유일한 스코프 단위가 아니다. 블록 스코프는 함수만이 아니라 (일반적으로 {} 같은) 임의의 코드 블록에 변수와 함수가 속하는 개념이다.
+
+ES3부터 시작해서 try/catch 구조의 catch 부분은 블록 스코프를 가진다. ES6에서 키워드 let이 추가되어 임의의 코드 블록 안에 변수를 선언할 수 있게 됐다. "if () {let a= 2;}"에서 변수 a는 if 문의 {} 블록 스코프에 자신을 붙인다.
+
+쉽게 착각하지만, 블록 스코프는 var 함수 스코프를 완전히 대체할 수 없다. 두 기능은 공존하며 개발자들은 함수 스코프와 블록 스코프 기술을 같이 사용할 수 있어야 하고 그래야 한다. 상황에 따라 더 읽기 쉽고 유지 보수가 쉬운 코드를 작성하기 위해 두 기술을 적절한 곳에 사용하면 된다.
