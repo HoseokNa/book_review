@@ -4,6 +4,8 @@
 * [5-2 핵심](#5-2-핵심)
 * [5-3 이제 나는 볼 수 있다](#5-3-이제-나는-볼-수-있다)
 * [5-4 반복문과 클로저](#5-4-반복문과-클로저)
+* [5-5 모듈](#5-5-모듈)
+* [5-6 정리하기](#5-6-정리하기)
 
 ## 5-1 깨달음
 
@@ -250,3 +252,249 @@ for(let i = 1; i <= 5; i++) {
 ```
 
 블록 스코프와 클로저가 함께 활약해서 모든 문제를 해결했다.
+
+## 5-5 모듈
+
+클로저의 능력을 활용하면서 표면적으로는 콜백과 상관없는 코드 패터늘이 있다. 그중 가장 강력한 패턴인 모듈을 살펴보자.
+
+```js
+function foo() {
+  var something = "cool";
+  var another = [1, 2, 3];
+
+  function doSomething() {
+    console.log(something);
+  }
+
+  function doAnother() {
+    console.log(another.join(" ! "));
+  }
+}
+```
+
+이 코드에는 클로저의 흔적이 보이지 않는다. 변수 something, another 그리고 내부 함수 doSomething(), doAnother() 같은 몇 가지 비공개 데이터가 있다. 이들 모두 foo()의 내부 스코프를 렉시컬 스코프(당연히 클로저도 따라온다)로 가진다.
+
+```js
+function CoolModule(){
+  var something = "cool";
+  var another = [1, 2, 3];
+
+  function doSomething() {
+    console.log(something);
+  }
+
+  function doAnother() {
+    console.log(another.join(" ! "));
+  }
+
+  return {
+    doSomething: doSomething,
+    doAnother: doAnother
+  };
+}
+
+var foo = CoolModule();
+
+foo.doSomething();  // cool
+foo.doAnother();  // 1 ! 2 ! 3
+```
+
+이 코드와 같은 자바스크립트 패턴을 모듈이라고 부른다. 가장 흔한 모듈 패턴 구현 방법은 모듈 노출(Revealing Module)이고, 앞의 코드는 이것의 변형이다.
+
+앞의 코드를 확인해 보자.
+
+첫째, CoolModule()은 그저의 하나의 함수다. 그러나 모듈 인스턴스를 생성하려면 반드시 호출해야만 한다. 최외곽 함수가 실행되지 않으면 내부 스코프와 클로저는 생성되지 않는다.
+
+둘째, CoolModule() 함수는 객체를 반환한다. 반환되는 객체는 객체-리터럴 문법 { key:value, ...}에 따라 표기된다. 해당 객체는 내장 함수들에 대한 참조를 가진다. 하지만 내장 데이터 변수는 비공개로 숨겨져 있다. 이 객체의 반환 값은 본질적으로 모듈의 공개 API라고 생각할 수 있다.
+
+객체의 반환 값은 최종적으로 외부 변수 foo에 대입되고, foo.doSomething()과 같은 방식으로 API의 속성 메서드에 접근할 수 있다.
+
+함수 doSomething()과 doAnother()는 모듈 인스턴스의 내부 스코프에 포함하는 클로저를 가진다.
+
+이 모듈 패턴을 사용하려면 두 가지 조건이 필요하다.
+
+1. 하나의 최외곽 함수가 존재하고, 이 함수가 최소 한번은 호출되어야 한다(호출할 때마다 새로운 모듈 인스턴스가 생성된다).
+2. 최외곽 함수는 최소 한 번은 하나의 내부 함수를 반환해야 한다. 그래야 해당 내부 함수가 비공개 스코프에 대한 클로저를 가져 비공개 상태에 접근하고 수정할 수 있다.
+
+하나의 함수 속성만을 가지는 객체는 진정한 모듈이 아니다. 함수 실행 결과로 반환된 객체에 데이터 속성들은 있지만 닫힌 함수가 없다면, 당연히 그 객체는 진정한 모듈이 아니다.
+
+이번엔 오직 하나의 인스턴스, '싱글톤'만 생성하는 모듈을 살펴보자.
+
+```js
+var foo = (function CoolModule(){
+  var something = "cool";
+  var another = [1, 2, 3];
+
+  function doSomething() {
+    console.log(something);
+  }
+
+  function doAnother() {
+    console.log(another.join(" ! "));
+  }
+
+  return {
+    doSomething: doSomething,
+    doAnother: doAnother
+  };
+})();
+
+foo.doSomething();  // cool
+foo.doAnother();  // 1 ! 2 ! 3
+```
+
+모듈 함수를 IIFE로 바꾸고 즉시 실행시켜 반환 값을 직접 하나의 모듈 인스턴스 확인자 foo에 대입시켰다.
+
+효과적인 모듈 패턴 중 하나느 ㄴ다음 코드와 같이 공개 API로 반환하는 객체에 이름을 정하는 방식이다.
+
+```js
+var foo = (function CoolModule(id){
+  function change() {
+    // public API 수정
+    publicAPI.identify = identify2;
+  }
+
+  function identify1() {
+    console.log(id);
+  }
+
+  function identify2() {
+    console.log(id.toUpperCase());
+  }
+
+  var publicAPI = {
+    change: change,
+    identify: identify1
+  };
+
+  return publicAPI;
+})("foo module");
+
+foo.identify(); // foo module
+foo.change();
+foo.identify(); // FOO MODULE
+```
+
+### 5-5-1 현재의 모듈
+
+많은 모듈 의존성 로더와 관리자는 본질적으로 이 패턴의 모듈 정의를 친숙한 API 형태로 감싸고 있다.
+
+```js
+var MyModules = (function Manager(){
+  var modules = {};
+
+  function define(name, deps, impl){
+    for(var i = 0; i < deps.length; i++){
+      deps[i] = modules[deps[i]];
+    }
+    modules[name] = imp.apply(impl, deps);
+  }
+
+  function get(name) {
+    return modules[name];
+  }
+
+  return {
+    define: define,
+    get: get
+  };
+})();
+```
+
+이 코드의 핵심부는 "modules[name] = impl.appy(impl, deps)"다. 이 부분은 (의존성을 인자로 넘겨) 모듈에 대한 정의 래퍼 함수를 호출하여 반환 값인 모듈 API를 이름으로 정리된 내부 모듈 리스트에 저장한다.
+
+해당 부분을 이용해 모듈을 정의하는 다음 코드를 보자.
+
+```js
+MyModules.define("bar",[], function(){
+  function hello(who){
+    return "Let me introduce: " + who;
+  }
+
+  return {
+    hello: hello
+  };
+});
+
+MyModules.define("foo", ["bar"], function(){
+  var hungry = "hippo";
+  function awesome(){
+    console.log( bar.hello(hungry).toUpperCase());
+  }
+
+  return {
+    awsome: awesome
+  };
+});
+
+var bar = MyModules.get("bar");
+var foo = MyModules.get("foo");
+
+console.log(
+  bar.hello("hippo")
+);  // Let me introduce: hippo
+
+foo.awesome();  // LET ME INTRODUCE: HIPPO
+```
+
+'foo'와 'bar' 모듈은 모두 공개 API를 반환하는 함수로 정의됐다. 'foo'는 심지어 'bar'의 인스턴스를 의존성 인자로 받아 사용할 수도 있다.
+
+모듈 관리자를 만드는 특별한 마법이란 존재하지 않는다. 모듈 관리자는 앞에서 언급한 모듈 패턴의 특성을 모두 가진다. 이들은 함수 정의 래퍼를 호출하여 해당 모듈의 API인 변환 값을 저장한다. 모듈은 그저 모듈일뿐이다.
+
+### 5-5-2 미래의 모듈
+
+ES6는 모듈 개념을 지원하는 최신 문법을 추가했다. 모듈 시스템을 불러올 때 ES6는 파일을 개별 모듈로 처리한다. 각 모듈은 다른 모듈 또는 특정 API 멤버를 불러오거나 자신의 공개 API 멤버를 내보낼 수 있다.
+
+NOTE: 함수 기반 모듈은 정적으로 알려진(컴파일러가 읽을 수 있는) 패턴이 아니다. 따라서 이들 API의 의미느는 런타임 전까지 해석되지 않는다. 즉, 실제로 모듈의 API를 런타임에 수정할 수 있다는 말이다. 반면 ES6 모듈 API는 정적이다. 따라서 캄파일러는 컴파일레이션 중에  불러온 모듈의 API 멤버 참조가 실제로 존재하는지 확인한다. API 참조가 존재하지 않으면 컴파일러는 컴파일 시 초기 오류를 발생시킨다.
+
+ES6 모듈은 inline 형식을 지원하지 않고, 반드시 개별 파일(모듈당 파일 하나)에 정의되어야 한다. 브라우저와 엔진은 기본 모듈 로더를 가진다. 모듈을 불러올 때 모듈 로더는 동기적으로 모듈 파일을 불러온다.
+
+```js
+// bar.js
+function hello(who) {
+  return "Let me introduce: " + who;
+}
+
+export hello;
+
+// foo.js: "bar" 모듈로부터 오직 'hello()'만 import 
+import hello from "bar";
+
+var hungry = "hippo";function awesome(){
+    console.log( bar.hello(hungry).toUpperCase());
+  }
+
+  return {
+    awsome: awesome
+  };
+}
+
+export awesome;
+
+// baz.js: "foo"와 "bar" 전체를 import
+module foo from "foo";
+module bar from "bar";
+
+console.log(
+  bar.hello("rhino");
+);  // Let me introduce: rhino
+
+foo.awesome();  // LET ME INTRODUCE: HIPPO
+```
+
+키워드 import는 모듈 API에서 하나 이상의 멤버를 불러와 특정 변수(여기서는 hello)에 묶어 현재 스코프에 저장한다. 키워드 module은 모듈 API 전체를 불러와 특정 변수(여기서는 foo와 hello)에 묶는다. 키워드 export는 확인자를 현재 모듈의 공개 API로 내보낸다. 이 연산자들은 모듈의 정의에 따라 필요하면 얼마든지 사용할 수 있다.
+
+앞서 살펴본 함수-클로저 모듈처럼 모듈 파일의 내용은 스코프 클로저에 감싸진 것으로 처리된다.
+
+## 5-6 정리하기
+
+클로저는 사실 표준이고, 함수를 값으로 마음대로 넘길 수 있는 렉시컬 스코프 환경에서 코드를 작성하는 방법이다.
+
+클로저는 함수를 렉시컬 스코프 밖에서 호출해도 함수는 자신의 렉시컬 스코프를 기억하고 접근할 수 있는 특성을 의미한다.
+
+또한, 클로저는 다양한 형태의 모듈 패턴을 가능하게 하는 매우 효과적인 도구다.
+
+모듈은 두 가지 특성을 가져야 한다.
+
+1. 최외곽 래퍼 함수를 호출하여 외곽 스코프를 생성한다.
+2. 래핑 함수의 변환 값은 반드시 하나 이상의 내부 함수 참조를 가져야 하고, 그 내부 함수는 래퍼의 비공개 내부 스코프에 대한 클로저를 가져야 한다.
