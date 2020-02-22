@@ -215,4 +215,143 @@ function setTimeout(fn,delay) {
 
 이처럼 콜백과정에서 this 바인딩의 행방이 묘연해지는 경우가 많다.
 
-어떤 까닭으로 예기치 않게 this가 바뀌게 됐든 여러분이나 나나 콜백 함수의 레퍼런스를 마음대로 통제할 수 없다. 바로 뒷부분ㅇ에서 this를 '고정'해 이 문제를 해결하는 방법을 소개한다.
+어떤 까닭으로 예기치 않게 this가 바뀌게 됐든 여러분이나 나나 콜백 함수의 레퍼런스를 마음대로 통제할 수 없다. 바로 뒷부분에서 this를 '고정'해 이 문제를 해결하는 방법을 소개한다.
+
+### 2-2-3 명시적 바인딩
+
+그런데 함수 레퍼런스 프로퍼티를 객체에 더하지 않고 어떤 객체를 this 바인딩에 이용하겠다는 의지를 코드에 명확히 밝힐 방도는 없을까?
+
+이럴 때 call()과 apply() 메서드가 아주 적당하다.
+
+두 메서드는 this에 바인딩 할 객체를 첫째 인자로 받아 함수 호출 시 이 객체를 this로 세팅한다. this를 지정한 객체로 직접 바인딩 하므로 이를 '명시적 바인딩'이라 한다.
+
+```js
+function foo() {
+	console.log( this.a );
+}
+
+var obj = {
+	a: 2
+};
+
+foo.call( obj ); // 2
+```
+
+foo.call()에서 명시적으로 바인딩 하여 함수를 호출하므로 this는 반드시 obj가 된다.
+
+객체 대신 단순 원시 값(문자열, 불리언, 숫자)을 인자로 전달하면 원시 값에 대응되는 객체(new String(), new Boolean(), new Number())로 래핑 된다.
+
+Note: this 바인딩 기능만 따지면 call()과 apply()는 같은 메서드다.
+
+하지만 아쉽게도 이렇게 명시적으로 바이딩 해도 앞에서 언급한 this 바인딩이 도중에 소실되거나 프레임워크가 임의로 덮어써 버리는 문제는 해결할 수 없다.
+
+#### 하드 바인딩
+
+명시적 바인딩을 약간 변형한 꼼수가 있다.
+
+```js
+function foo() {
+	console.log( this.a );
+}
+
+var obj = {
+	a: 2
+};
+
+var bar = function() {
+	foo.call( obj );
+};
+
+bar(); // 2
+setTimeout( bar, 100 ); // 2
+
+// 하드 바인딩 된 'bar'에서 재정의된 'this'는 의미 없다.
+bar.call( window ); // 2
+```
+
+bar를 어떻게 호출하든 이 함수는 항상 obj를 바인딩 하여 foo를 실행한다. 이런 방인딩을 '하드 바인딩'이라고 한다.
+
+하드 바인딩으로 함수를 감싸는 형태의 코드는 다음과 같이 인자를 넘기고 반환 값을 돌려받는 창구가 필요할 때 주로 쓰인다.
+
+```js
+function foo(something) {
+	console.log( this.a, something );
+	return this.a + something;
+}
+
+var obj = {
+	a: 2
+};
+
+var bar = function() {
+	return foo.apply( obj, arguments );
+};
+
+var b = bar( 3 ); // 2 3
+console.log( b ); // 5
+```
+
+재사용 가능한 헬퍼 함수를 쓰는 것도 같은 패턴이다.
+
+```js
+function foo(something) {
+	console.log( this.a, something );
+	return this.a + something;
+}
+
+// 간단한 `bind` 헬퍼
+function bind(fn, obj) {
+	return function() {
+		return fn.apply( obj, arguments );
+	};
+}
+
+var obj = {
+	a: 2
+};
+
+var bar = bind( foo, obj );
+
+var b = bar( 3 ); // 2 3
+console.log( b ); // 5
+```
+
+하드 바인딩은 매우 자주 쓰는 패턴이여서 ES5 내장 유틸리티 Function.prototype.bind 역시 다음과 같이 구현되어 있다.
+
+```js
+function foo(something) {
+	console.log( this.a, something );
+	return this.a + something;
+}
+
+var obj = {
+	a: 2
+};
+
+var bar = foo.bind( obj );
+
+var b = bar( 3 ); // 2 3
+console.log( b ); // 5
+```
+
+bind()는 주어진 콘텍스트로 원본 함수를 호출하도록 하드 코딩된 새 함수를 반환한다.
+
+#### API 호출 콘텍스트
+
+많은 라이브러리 함수와 자바스크립트 언어 및 호스트 환경에 내장된 여러 새로운 함수는 대개 '콘텍스트'라 불리는 선택적인 인자를 제공한다. 이는 bind()를 써서 콜백 함수의 this를 지정할 수 없는 경우를 대비한 일종의 예비책이다.
+
+예를 들어, 다음과 같은 함수는 편의상 내부적으로 call()이나 apply()로 명시적 바인딩을 대신해준다.
+
+```js
+function foo(el) {
+	console.log( el, this.id );
+}
+
+var obj = {
+	id: "awesome"
+};
+
+// 'foo()' 호출 시 'obj'를 'this'로 사용한다.
+[1, 2, 3].forEach( foo, obj ); // 1 awesome  2 awesome  3 awesome
+```
+
