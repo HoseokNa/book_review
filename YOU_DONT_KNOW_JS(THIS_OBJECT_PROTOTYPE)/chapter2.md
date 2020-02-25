@@ -386,3 +386,238 @@ console.log( bar.a ); // 2
 ```
 
 앞에 new를 붙혀 foo()를 호출했고 새로 생성된 객체는 foo 호출 시 this에 바인딩 된다. 따라서 결국 new는 함수 호출 시 this를 새 객체와 바인딩 하는 방법이며 이것이 'new' 바인딩이다.
+
+## 2-3 모든 건 순거가 있는 법
+
+지금까지 함수를 호출할 때 4가지 this 바인딩 규칙을 알아봤다. 그런데 여러 개의 규칙이 중복으로 해당할 때는 어떻게 할까?
+
+기본 바인딩은 가장 뒷순위다. 그럼 암시적 바인딩과 명시적 바인딩 중 어느 쪽이 우선일까?
+
+```js
+function foo() {
+	console.log( this.a );
+}
+
+var obj1 = {
+	a: 2,
+	foo: foo
+};
+
+var obj2 = {
+	a: 3,
+	foo: foo
+};
+
+obj1.foo(); // 2
+obj2.foo(); // 3
+
+obj1.foo.call( obj2 ); // 3
+obj2.foo.call( obj1 ); // 2
+```
+
+결과는 명시적 바인딩이 암시적 바인딩보다 우선순위가 높다. 따라서 암시적 바인딩을 확인하기 전에 먼저 명시적 바인딩이 적용됐는지 반드시 살펴야 한다.
+
+new 바인딩은 어떨까?
+
+```js
+function foo(something) {
+	this.a = something;
+}
+
+var obj1 = {
+	foo: foo
+};
+
+var obj2 = {};
+
+obj1.foo( 2 );
+console.log( obj1.a ); // 2
+
+obj1.foo.call( obj2, 3 );
+console.log( obj2.a ); // 3
+
+var bar = new obj1.foo( 4 );
+console.log( obj1.a ); // 2
+console.log( bar.a ); // 4
+```
+
+new 바인딩이 암시적 바인딩보다 우선순위가 높다.
+
+그럼 new 바인딩과 명시적 바인딩은? Function.prototype.bind()는 어떤 종류든 자체 this 바인딩을 무시하고 주어진 바인딩을 적용하여 하드 코딩된 새 래퍼 함수를 생성한다. 따라서 명시적 바인딩의 한 형태인 하드 코딩이 new 바인딩보다 우선순위가 높고 new로 오버라이드할 수 없다.
+
+```js
+function foo(something) {
+	this.a = something;
+}
+
+var obj1 = {};
+
+var bar = foo.bind( obj1 );
+bar( 2 );
+console.log( obj1.a ); // 2
+
+var baz = new bar( 3 );
+console.log( obj1.a ); // 2
+console.log( baz.a ); // 3
+```
+
+앞에서 '가짜' bind 헬퍼 함수를 만들었는데 특성상 new 연산자를 써서 obj로 하드 바인딩 된 걸 오버라디으할 방도가 없다.
+
+```js
+function bind(fn, obj) {
+	return function() {
+		fn.apply( obj, arguments );
+	};
+}
+```
+
+그러나 ES5에 내장된 진짜 함수는 실제로 더 정교하다. 다음은 형태를 다듬은 bind() 폴리필이다.
+
+```js
+if (!Function.prototype.bind) {
+	Function.prototype.bind = function(oThis) {
+		if (typeof this !== "function") {
+			// ECMAScript 5의 내부 함수 IsCallable을 최대한 비슷하게 흉내 낸 것
+			throw new TypeError( "Function.prototype.bind - 바인딩 하려는 대상이 " +
+				"호출 가능하지 않습니다."
+			);
+		}
+
+		var aArgs = Array.prototype.slice.call( arguments, 1 ),
+			fToBind = this,
+			fNOP = function(){},
+			fBound = function(){
+				return fToBind.apply(
+					(
+						this instanceof fNOP &&
+						oThis ? this : oThis
+					),
+					aArgs.concat( Array.prototype.slice.call( arguments ) )
+				);
+			}
+		;
+
+		fNOP.prototype = this.prototype;
+		fBound.prototype = new fNOP();
+
+		return fBound;
+	};
+}
+```
+
+new 오버라이드를 가능케 하는 코드는 이 부분이다.
+
+```js
+this instanceof fNOP &&
+oThis ? this : oThis
+
+// 중략
+
+fNOP.prototype = this.prototype;
+fBound.prototype = new fNOP();
+```
+
+하드 바인딩 함수가 new로 호출되어 this가 새로 생성된 객체로 세팅됐는지 조사해보고 맞으면 하드 바인딩에 의한 this를 버리고 새로 생성된 this를 대신 사용한다.
+
+굳이 new로 하다 바인딩을 오버라이드하려는 이유는 뭘까? 기본적으로 this 하드 바인딩을 무시하는 (new로 객체를 생성할 수 있는) 함수를 생성하여 함수 인자를 전부 또는 일부만 미리 세팅해야 할 때 유용하다. bind() 함수는 최초 this 바인딩 이후 전달된 인자를 원 함수의 기본 인자로 고정하는 역할을 한다. ('Curring'의 일종)
+
+```js
+function foo(p1,p2) {
+	this.val = p1 + p2;
+}
+
+// 'null'을 입력한 건 여기서 'this' 하드 바인딩은
+// 어차피 'new' 호출 시 오버라이드되므로 신경 쓰지 않겠다는 의미다.
+var bar = foo.bind( null, "p1" );
+
+var baz = new bar( "p2" );
+
+baz.val; // p1p2
+```
+
+### 2-3-1 this 확정 규칙
+
+다음 항목을 순서대로 따져보고 그중 맞아떨어지는 최초 규칙을 적용한다.
+
+1. new로 함수를 호출(new 바인딩) 했는가? -> 맞으면 새로 생성된 객체가 this다.
+```js
+var bar = new foo();
+```
+
+2. call과 apply로 함수를 호출(명시적 바인딩), 이를테면 bind 하드 바인딩 내부에 숨겨진 형태로 호출됐는가? -> 맞으면 명시적으로 지정된 객체가 this다.
+```js
+var bar = foo.call(obj2);
+```
+
+3. 함수를 콘텍스트(임시적 바인딩), 즉 객체르 ㄹ소유 또는 포함하는 형태로 호출됐는가? -> 맞으면 바로 이 콘텍스트 객체가 this다.
+```js
+var bar = obj1.foo();
+```
+
+그 외의 경우는 this는 기본값(염격 모드는 undefined, 비엄격모드는 전역 객체)으로 세팅된다(기본 바인딩)
+```js
+var bar = foo();
+```
+
+## 2-4 바인딩 예외
+
+기본 바인딩 규칙이 적용되는 예외 사례를 보자.
+
+### 2-4-1 this 무시
+
+call, apply, bind 메서드에 첫 번째 인자로 null 또는 undefined를 넘기면 this 바인딩이 무시되고 기본 바인딩 규칙이 적용된다.
+
+```js
+function foo() {
+	console.log( this.a );
+}
+
+var a = 2;
+
+foo.call( null ); // 2
+```
+
+그런데 왜 null 같은 값으로 this 바인딩을 하려는 걸까? apply()는 함수 호출 시 다수의 인자를 배열 값으로 즉 펼쳐 보내는 용도로 자주 쓰인다. bind()도 유사한 방법으로 인자들(미리 세팅된 값들)을 커링하는 메서드로 많이 사용한다.
+
+```js
+function foo(a,b) {
+	console.log( "a:" + a + ", b:" + b );
+}
+
+// 인자들을 배열 형태로 펼친다.
+foo.apply( null, [2, 3] ); // a:2, b:3
+
+// `bind(..)`로 커링한다.
+var bar = foo.bind( null, 2 );
+bar( 3 ); // a:2, b:3
+```
+
+apply와 bind 모두 반드시 첫 번째 인자로 this 바인딩을 지정해야 한다. 하지만 this가 로직 상 아무래도 좋다면 일종의 Placeholder 값으로 null 정도의 값을 전달하는 편이 합리적이다.
+
+그러나 this 바인딩이 어찌 되든 상관없다고 null을 애용하는 건 약간의 '리스크'가 있다. 예를 들어 어떤 함수(여러분이 어찌할 수 없는 서트 파티 라이브러리 함수) 호출 시 null을 전달했는데 마침 그 함수가 내부적으로 this를 레퍼런스로 참조하면 기본 바인딩이 적용되어 전역 변수를 참조하거나 최악으로는 예기치 못한 일이 발생 할 수 있다.
+
+#### 더 안전한 this
+
+더 안전하게 가고자 한다면 프로그램에서 부작용과 100% 무관한 객체를 this로 바인딩 하는게 좋다. 업계의 용어로 표현하면 'DMZ(비무장지대)' 객체, 즉 내용이 하나도 없으면서 전혀 위임되지 않은(Nondelegated) 객체 정도가 필요하다.
+
+이 DMZ 객체를 전달하면, 받는 쪽에서 this를 어찌 사용하든지 어차피 대상은 빈 객체로 한정되므로 최소한 전역 객체를 건드리는 부작용은 방지할 수 있다.
+
+빈 객체를 만드는 가장 간단한 방법은 Object.create(null)이다(5장 프로토타입 참고). Object.create(null)은 {}와 비슷하나 Object.prototype으로 위임하지 않으므로 {} 보다 '더 텅 빈' 객체라고 볼 수 있다.
+
+```js
+function foo(a,b) {
+	console.log( "a:" + a + ", b:" + b );
+}
+
+// DMZ 객체 생성
+var ø = Object.create( null );
+
+// 인자들을 배열 형태로 펼친다.
+foo.apply( ø, [2, 3] ); // a:2, b:3
+
+// `bind(..)`로 커링한다.
+var bar = foo.bind( ø, 2 );
+bar( 3 ); // a:2, b:3
+```
+
+기능적으로 '더 안전하다'는 의미 외에도 ø 처럼 표기하면 'this는 텅 빈 객체로 하겠다'는 의도를 null 보다 더 확실하게 밝히는 효과가 있다. 어쨋거나 DMZ 객체의 이름은 각자의 취향에 맡긴다.
