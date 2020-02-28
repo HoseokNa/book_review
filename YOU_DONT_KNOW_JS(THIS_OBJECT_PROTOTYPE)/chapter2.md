@@ -2,6 +2,10 @@
 
 * [2-1 호출부](#2-1-호출부)
 * [2-2 단지 규칙일 뿐](#2-2-단지-규칙일-뿐)
+* [2-3 모든 건 순서가 있는 법](#2-3-모든-건-순서가-있는-법)
+* [2-4 바인딩 예외](#2-4-바인딩-예외)
+* [2-5 Lexical this](#2-5-Lexical-this)
+* [2-6 정리하기](#2-6-정리하기)
 
 1장에서는 this가 알고 있었던 것과는 달리 호출부(함수가 어떻게 호출됐는가?)에서 함수를 호출할 때 바인딩 된다는 사실을 이야기했다.
 
@@ -387,7 +391,7 @@ console.log( bar.a ); // 2
 
 앞에 new를 붙혀 foo()를 호출했고 새로 생성된 객체는 foo 호출 시 this에 바인딩 된다. 따라서 결국 new는 함수 호출 시 this를 새 객체와 바인딩 하는 방법이며 이것이 'new' 바인딩이다.
 
-## 2-3 모든 건 순거가 있는 법
+## 2-3 모든 건 순서가 있는 법
 
 지금까지 함수를 호출할 때 4가지 this 바인딩 규칙을 알아봤다. 그런데 여러 개의 규칙이 중복으로 해당할 때는 어떻게 할까?
 
@@ -621,3 +625,163 @@ bar( 3 ); // a:2, b:3
 ```
 
 기능적으로 '더 안전하다'는 의미 외에도 ø 처럼 표기하면 'this는 텅 빈 객체로 하겠다'는 의도를 null 보다 더 확실하게 밝히는 효과가 있다. 어쨋거나 DMZ 객체의 이름은 각자의 취향에 맡긴다.
+
+### 2-4-2 간접 레퍼런스
+
+한 가지 더 유의할 점은 간접 레퍼런스가 생성되는 경우로, 함수를 호출하면 무조건 기본 바인딩 규칙이 적용되어 버린다. 간접 레퍼런스는 할당문에서 가장 빈번하게 발생한다.
+
+```js
+function foo() {
+	console.log( this.a );
+}
+
+var a = 2;
+var o = { a: 3, foo: foo };
+var p = { a: 4 };
+
+o.foo(); // 3
+(p.foo = o.foo)(); // 2
+```
+
+할당 표현식 p.foo = o.foo의 결괏값은 원 함수 객체의 레퍼런스이므로 실제로 호출부는 foo()다.
+
+그리고 호출됨 함수 본문(호출부가 아니라)의 엄격모드에 따라 기본 바인딩 값이 달라진다는 걸 잊지 말자.
+
+### 2-4-3 소프트 바인딩
+
+하드 바인딩은 함수의 유연성을 크게 떨어뜨리기 때문에 this를 암시적 바인딩 하거나 나중에 다시 명시적 바인딩 하는 식으로 수동으로 오버라이드하는 것이 불가능하다.
+
+암시적/명시적 바인딩 기법을 통해 임의로 this 바인딩을 하는 동시에 전역 객체나 undefined가 아닌 다른 기본 바인딩 값을 세팅하는 소프트 바인딩 유틸리티를 고안했다.
+
+```js
+if (!Function.prototype.softBind) {
+	Function.prototype.softBind = function(obj) {
+		var fn = this,
+			curried = [].slice.call( arguments, 1 ),
+			bound = function bound() {
+				return fn.apply(
+					(!this ||
+						(typeof window !== "undefined" &&
+							this === window) ||
+						(typeof global !== "undefined" &&
+							this === global)
+					) ? obj : this,
+					curried.concat.apply( curried, arguments )
+				);
+			};
+		bound.prototype = Object.create( fn.prototype );
+		return bound;
+	};
+}
+```
+
+호출 시점에 this를 체크하는 부분에서 주어진 함수를 래핑하여 전역 객체나 undefined일 경우엔 미리 준비한 대체 기본 객체(obj)로 세팅한다. 그 외의 경우 this는 손대지 않는다. 그리고 선택적인 커링 기능도 있다.
+
+```js
+function foo() {
+   console.log("name: " + this.name);
+}
+
+var obj = { name: "obj" },
+    obj2 = { name: "obj2" },
+    obj3 = { name: "obj3" };
+
+var fooOBJ = foo.softBind( obj );
+
+fooOBJ(); // name: obj
+
+obj2.foo = foo.softBind(obj);
+obj2.foo(); // name: obj2   <---- 주목!!!
+
+fooOBJ.call( obj3 ); // name: obj3   <---- 주목!
+
+setTimeout( obj2.foo, 10 ); // name: obj   <---- 소프트 바인딩이 적용됐다.
+```
+
+소프트 바인딩이 탑재된 foo() 함수는 this를 obj2나 obj3으로 수동 바인딩 할 수 있고 기본 바인딩 규칙이 적용되어야 할 땐 다시 obj로 되돌린다.
+
+## 2-5 Lexical this
+
+ES6부터는 앞에 말한 4가지 규칙들을 따르지 않는 특별한 함수가 있다. 바로 화살표 함수다. 화살표 함수는 Enclosing Scope(함수 또는 전역)를 보고 this를 알아서 바인딩 한다.
+
+다음은 화살표 함수의 렉시컬 스코프를 나타낸 예제다.
+
+```js
+function foo() {
+	// 화살표 함수를 반환
+	return (a) => {
+		// 여기서 `this`는 lexical로 'foo()'에서 상속된다.
+		console.log( this.a );
+	};
+}
+
+var obj1 = {
+	a: 2
+};
+
+var obj2 = {
+	a: 3
+};
+
+var bar = foo.call( obj1 );
+bar.call( obj2 ); // 2, 3이 아니다!
+```
+
+화살표 함수의 lexical 바인딩은 절대로 (심지어 new로도!) 오버라이드할 수 없다.
+
+화살표 함수는 이벤트 처리기나 타이머 등의 콜백에 가장 널리 쓰인다.
+
+```js
+function foo() {
+	setTimeout(() => {
+		// 여기서 `this`는 lexical로 'foo()'에서 상속된다.
+		console.log( this.a );
+	},100);
+}
+
+var obj = {
+	a: 2
+};
+
+foo.call( obj ); // 2
+```
+
+화살표 함수는 this를 확실히 보장하는 수단으로 bind()를 대체할 수 있는 것처럼 보인다. 그렇지만 결과적으로 더 잘 알려진 렉시컬 스코프를 쓰겠다고 기존의 this 체계를 포기하는 형국이란 점을 간과하면 안된다.
+
+ES6 이전에도 화살표 함소의 기능과 크게 다르지 않은 패턴이 있었다.
+
+```js
+function foo() {
+	var self = this; // `this` 렉시컬 적으로 포착한다.
+	setTimeout( function(){
+		console.log( self.a );
+	}, 100 );
+}
+
+var obj = {
+	a: 2
+};
+
+foo.call( obj ); // 2
+```
+
+"self = this" 나 화살표 함수 모두 bind() 대신 사용 가능한 좋은 해결책이지만 this를 제대로 이해하고 수용하기보단 골치 아픈 this에서 도망치려는 꼼수라고 할 수 있다.
+
+어쨋거나 this 스타일의 코드를 작성해야 할 경우 어휘적 "self = this"든, 화살표 함수 꼼수든 꼭 다음 두가지 중 하나만 선택하자.
+
+1. 오직 렉시컬 스코프만 사용하고 가식적인 this 스타일의 코드는 접어둔다.
+2. 필요하면 bind() 까지 포함하여 완전한 this 스타일의 코드를 구사하되 self = this나 화살표 함수 같은 소위 'lexical this' 꼼수는 삼가야 한다.
+* 두 스타일 모두 적절히 혼용하여 효율적인 프로그래밍을 할 수도 있겠지만 관리도 잘 안되고 이해하기 곤란한 골칫덩이 코드가 될 것이다.
+
+## 2-6 정리하기
+
+함수 실행에 있어서 this 바인딩은 함수의 직접적인 호출부에 따라 달라진다. 일단 호출부를 식별한 후 다음 4가지 규칙을 열거한 우선순위에 따라 적용한다.
+
+1. new로 호출했다면 새로 생성된 객체로 바인딩 된다.
+2. call이나 apply 또는 bind로 호출됐다면 주어진 객체로 바인딩 된다.
+3. 호출의 주체인 콘텍스트 객체로 호출됐다면 바로 이 콘텍스트 객체로 바인딩 된다.
+4. 기본 바인딩에서 엄격 모드는 undefined, 그 밖엔 전역 객체로 바인딩 된다.
+
+실수로 또는 예기치 않게 기본 바인딩 규칙이 적용되는 경우를 조심해야 한다. this 바인딩을 안전하게 하고 싶으면 ø = Object.create( null ) 처럼 DMZ 객체를 자리 끼움 값으로 바꿔 넣어 뜻하지 않은 부수 효과가 전역 객체에서 발생하지 않게 한다.
+
+ES6 화살표 함수는 표준 바인딩 규칙을 무시하고 렉시컬 스코프로 this를 바인딩 한다. 즉, enclosing 함수 호출로부터 어떤 값이든 this 바인딩을 상속한다. 이는 ES6 이전 시절 self = this 구문을 대체한 장치다.
