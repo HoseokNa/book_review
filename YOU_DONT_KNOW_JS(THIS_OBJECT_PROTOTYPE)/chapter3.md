@@ -207,3 +207,226 @@ someFoo;		// function foo(){..}
 
 myObject.foo;	// function foo(){..}
 ```
+
+### 3-3-3 배열
+
+배열도 []로 접근하는 형태지만 이미 언급한 대로 값을 저장하는 방법과 장소가 더 체계적이다. 배열은 인덱스라는 양수로 표기된 위치에 값을 저장한다.
+
+```js
+var myArray = [ "foo", 42, "bar" ];
+
+myArray.length;		// 3
+
+myArray[0];			// "foo"
+
+myArray[2];			// "bar"
+```
+
+배열 자체는 객체여서 배열에 프로퍼티를 추가하는 것도 가능하다. 이름 붙은 프로퍼티를 추가해도 배열 길이에는 변함이 없다.
+
+```js
+var myArray = [ "foo", 42, "bar" ];
+
+myArray.baz = "baz";
+
+myArray.length;	// 3
+
+myArray.baz;	// "baz"
+```
+
+키/값 저장소로는 객체, 숫자 인덱스를 가진 저장소로는 배열을 쓰는게 좋다.
+
+배열에 프로퍼티를 추가할 때 프로퍼티명이 숫자와 유사하면 숫자 인덱스로 잘못 해석되어 배열 내용이 달라질 수 있으니 주의하자.
+
+```js
+var myArray = [ "foo", 42, "bar" ];
+
+myArray["3"] = "baz";
+
+myArray.length;	// 4
+
+myArray[3];		// "baz"
+```
+
+### 3-3-4 객체 복사
+
+다음 객체를 보자.
+
+```js
+function anotherFunction() { /*..*/ }
+
+var anotherObject = {
+	c: true
+};
+
+var anotherArray = [];
+
+var myObject = {
+	a: 2,
+	b: anotherObject,	// 사본이 아닌 레퍼런스!
+	c: anotherArray,	// 역시 레퍼런스!
+	d: anotherFunction
+};
+
+anotherArray.push( anotherObject, myObject );
+```
+
+myObject의 사본은 정확히 어떻게 표현해야 할까?
+
+얕은 복사(Shallow Copy)를 하면 생성된 새 객체의 a 프로퍼티는 원래 값 2가 그대로 복사되지만 b, c, d 프로퍼티는 원 객체의 레퍼런스와 같은 대상을 가리키는 또 다른 레퍼런스다. 깊은 복사를 하면 myObject는 물론이고 anotherObject와 myObject를 가리키는 레퍼런스를 갖고 있으므로 원래 레퍼런스가 보존되는게 아니라 이들까지 함께 복사된다. 결국, 환영 참조 형태가 되어 무한 복사에 빠지고 만다.
+
+이 난관을 어떻게 극복할까? 이 문제는 꽤 오랫동안 뾰족한 답이 없었다.
+
+'JSON-Safe'([JSON 문자열 <-> 객체 직렬화 및 역직렬화]를 해도 구조와 값이 같은) 객체'는 쉽게 복사할 수 있으므로 하나의 대안이 될 수는 있다.
+
+```js
+var newObj = JSON.parse(JSON.stringfy(someObj));
+```
+
+물론, 100% 'JSON-Safe 객체'여야 한다. 이 요건이 별로 중요하지 않을 때도 있지만 이것만으로는 충분하지 않을 경우가 있다.
+
+한편, 얕은 복사는 이해하기 쉽고 별다른 이슈가 없기에 ES6부터는 Object.assign() 메소드를 제공한다.
+
+```js
+var newObj = Object.assign( {}, myObject );
+
+newObj.a;						// 2
+newObj.b === anotherObject;		// true
+newObj.c === anotherArray;		// true
+newObj.d === anotherFunction;	// true
+```
+
+### 3-3-5 프로퍼티 서술자
+
+ES5 이전에는 읽기 전용과 같은 프로퍼티의 특성을 확인할 방법이 없었으나 ES5 부터 모든 프로퍼티는 프로퍼티 서술자(Property Descriptor)로 표현된다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+Object.getOwnPropertyDescriptor( myObject, "a" );
+// {
+//    value: 2,
+//    writable: true,
+//    enumerable: true,
+//    configurable: true
+// }
+```
+
+보시다시피, 2 말고도 wirtable, enumerable, configurable의 세 가지 특성이 더 있다.
+
+Object.defineProperty()로 새로운 프로퍼티를 추가하거나 기존 프로퍼티의 특성을 원하는 대로 수정할 수 있다.(configurable이 true일 떄만 가능)
+
+```js
+var myObject = {};
+
+Object.defineProperty( myObject, "a", {
+	value: 2,
+	writable: true,
+	configurable: true,
+	enumerable: true
+} );
+
+myObject.a; // 2
+```
+
+#### Wirtable
+
+프로퍼티의 값의 쓰기 가능 여부는 writable로 조정한다.
+
+```js
+var myObject = {};
+
+Object.defineProperty( myObject, "a", {
+	value: 2,
+	writable: false, // 쓰기 금지!
+	configurable: true,
+	enumerable: true
+} );
+
+myObject.a = 3;
+
+myObject.a; // 2
+```
+
+쓰기 금지된 값을 수정하려고 하면 조용히 실패하며 엄격 모드에선 에러가 난다.
+
+```js
+"use strict";
+
+var myObject = {};
+
+Object.defineProperty( myObject, "a", {
+	value: 2,
+	writable: false, // 쓰기 금지!
+	configurable: true,
+	enumerable: true
+} );
+
+myObject.a = 3; // TypeError
+```
+
+#### Configurable
+
+프로퍼티가 설정 가능하면 프로퍼티 서술자를 변경할 수 있다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+myObject.a = 3;
+myObject.a;					// 3
+
+Object.defineProperty( myObject, "a", {
+	value: 4,
+	writable: true,
+	configurable: false,	// 설정 불가!
+	enumerable: true
+} );
+
+myObject.a;					// 4
+myObject.a = 5;
+myObject.a;					// 5
+
+Object.defineProperty( myObject, "a", {
+	value: 6,
+	writable: true,
+	configurable: true,
+	enumerable: true
+} ); // TypeError
+```
+
+configurable은 일단 false가 되면 돌아올 수 없고 절대로 복구되지 않으니 유의하자.
+
+configurable:false로 설정하면 이미 delete 연산자로 존재하는 프로퍼티 삭제도 금지 된다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+myObject.a;				// 2
+delete myObject.a;
+myObject.a;				// undefined
+
+Object.defineProperty( myObject, "a", {
+	value: 2,
+	writable: true,
+	configurable: false,
+	enumerable: true
+} );
+
+myObject.a;				// 2
+delete myObject.a;
+myObject.a;				// 2
+```
+
+delete는 객체에서 (삭제 가능한) 프로퍼티를 곧바로 삭제하는 용도로만 쓰인다.(C/C++ 같은 메모리 해제할 때는 쓰는 도구랑 다름)
+
+#### Enumerable
+
+for in 루프처럼 객체 프로퍼티를 열거하는 구문에서 해당 프로퍼티의 표출 여부를 나타낸다. enumerable:false로 지정된 프로퍼티는 접근할 수는 있지만 루프 구문에서 감춰진다.
+
+감추고 싶은 특별한 프로퍼티에 한하여 enumerable:false 세팅하자.
