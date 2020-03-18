@@ -430,3 +430,269 @@ delete는 객체에서 (삭제 가능한) 프로퍼티를 곧바로 삭제하는
 for in 루프처럼 객체 프로퍼티를 열거하는 구문에서 해당 프로퍼티의 표출 여부를 나타낸다. enumerable:false로 지정된 프로퍼티는 접근할 수는 있지만 루프 구문에서 감춰진다.
 
 감추고 싶은 특별한 프로퍼티에 한하여 enumerable:false 세팅하자.
+
+### 3-3-6 불변성
+
+ES5부터는 프로퍼티/객체가 변경되지 않도록 할 수 있는 여러 가지 방법을 제공한다. 그러나 이러한 방법은 얕은 불변성(Shallow Immutablity)만 지원한다. 즉, 객체 자신과 직속 프로퍼티 특성만 불변으로 만들 뿐 다른 객체(배열, 객체, 함수 등)를 가리키는 레퍼런스가 있을 때 해당 객체의 내용까지 불변으로 만들지느 ㄴ못한다.
+
+```js
+myImmutableObject.foo; // [1,2,3]
+myImmutableObject.foo.push( 4 );
+myImmutableObject.foo; // [1,2,3,4]
+```
+
+myImmutableObject.foo의 내용(자신의 객체 - 배열) 까지 보호하려면 뒤에서 나열할 방법으로 foo를 불변 객체로 바꾸어야 한다.
+
+NOTE: 자바스크립트에서 뼛속까지 고정된 불변 객체를 쓸 일은 거의 없다. 필요한 경우도 있겠지만 객체 값이 변경되어도 문제가 없는 견고한 프로그램을 설계할 다른 방법은 없는지 일반적인 디자인 패턴 관점에서 재고해야 한다.
+
+#### 객체 상수
+
+wirtable:false와 configurable:false를 같이 쓰면 객체 프로퍼티를 다음과 같이 상수처럼 쓸 수 있다.
+
+```js
+var myObject = {};
+
+Object.defineProperty( myObject, "FAVORITE_NUMBER", {
+	value: 42,
+	writable: false,
+	configurable: false
+} );
+```
+
+#### 확장 금지
+
+객체에 더는 프로퍼티를 추가할 수 없게 차단하고 현재 프로퍼티는 있는 그대로 놔두고 싶을 때 Object.preventExtensions()를 호출한다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+Object.preventExtensions( myObject );
+
+myObject.b = 3;
+myObject.b; // undefined
+```
+
+비엄격 모드에선 실패하고 엄격모드에서는 TypeError가 발생한다.
+
+#### 봉인
+
+Object.seal()은 봉인된 객체를 생성한다. 더는 프로퍼티를 추가할 수 없을뿐더러 기존 프로퍼티를 재설정하거나 삭제할 수도 없다. 물론 값은 얼마든지 바꿀 수 있다.
+
+#### 동결
+
+Object.freeze()는 객체를 얼린다. Object.seal()을 적용하고 '데이터 접근자(Data Accessor)' 프로퍼티를 모두 writable:false 처리해서 값도 못 바꾸게 한다.(하지만 이 객체가 참조하는 다른 객체의 내용까지 봉쇄하는 건 아니다)
+> 아래의 Deep Freeze 내용을 살펴보면 참조하는 모든 객체를 재귀 순회하면서 적용하는 것 같은데 조금 더 알아보야 할 것 같다. 말이 다른 느낌?
+
+Object.freeze()를 적용하면 지금까지는 전혀 영향을 받지 않았던 해당 객체가 참조하는 모든 객체를 재귀 순회하면서 Object.freeze()를 적용하여 깊숲이 동결(Deep Freeze)한다. 하지만 자칫 의도하지 않은 다른 동유된 객체까지 동결시킬 수 있어 주의해야 한다.
+
+### 3-3-7 [[GET]]
+
+프로퍼티에 접근하기까지의 세부 과정은 미묘하면서도 중요하다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+myObject.a; // 2
+```
+
+myObject.a 코드는 myObject에 대해 [[Get]] 연산을 한다.
+
+기본으로 [[Get]] 연산은 주어진 이름의 프로퍼티를 먼저 찾아보고 있으면 그 값을 반환한다. 없을 경우에는 다른 중요한 작업을 하도록 정의되어 있는데, 이 부분은 5장 프로토타입에서 따로 설명한다.
+
+주어진 프로퍼티 값을 어떻게 해도 찾을 수 없으면 [[Get]] 연산은 undefined를 반환한다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+myObject.b; // undefined
+```
+
+```js
+var myObject = {
+	a: undefined
+};
+
+myObject.a; // undefined
+myObject.b; // undefined
+```
+
+내부적으로 [[Get]] 연산을 수행할 테니 대체로 myObject.b가 myObject.a보다 '더 일을 많이 한다'고 볼 수 있다.
+
+### 3-3-8 [[PUT]]
+
+[[Put]]을 실행하면 주어진 객체에 프로퍼티가 존재하는지(가장 결정적 영향을 미치는 요소다) 등 여러 가지 요소에 따라 이후 작동 방식이 달라진다. [[Put]] 알고리즘은 이미 존재하는 프로퍼티에 대해 대략 다음의 확인 절차를 밟는다.
+
+1. 프로퍼티가 접근 서술자(3-3-9 Getters-Setters 참고)인가? 맞은면 세터를 호출한다.
+2. 프로퍼티가 writable:false인 데이터 서술자인가? 맞으면 비엄격 모드에서 조용히 실패하고 엄격모드는 TypeError가 발생한다.
+3. 이 외에는 프로퍼티에 해당 값을 세팅한다.
+
+객체에 존재하지 않는 프로퍼티라면 [[Put]] 알고리즘은 훨씬 더 미묘하고 복잡해진다. 5장 프로토타입에서 더 명쾌하게 설명한다.
+
+### 3-3-9 Getters-Setters
+
+ES5부터는 Getters/Setters를 통해 프로퍼티 수준에서 이러한 기본 로직을 오버라이드할 수 있다. Getters/Setters는 각각 실제로 값을 가져오는/세팅하는 감춰진 함수를 호출하는 프로퍼티다.
+
+프로퍼티가 getter 또는 setter 어느 한쪽이거나 동시에 getter/setter가 될 수 있게 정의한 것을 ('데이터 서술자의'의 반대말로) '접근 서술자(Accessor Descriptor)'라고 한다. 접근 서술자에서는 프로퍼티의 값과 wirtable 속성은 무시되며 (configurable, enumerable과 더불어) 대신 프로퍼티의 Get/Set 속성이 중요하다.
+
+```js
+var myObject = {
+	// `a`의 getter를 정의
+	get a() {
+		return 2;
+	}
+};
+
+Object.defineProperty(
+	myObject,	// target
+	"b",		// property name
+	{			// descriptor
+		// `b`의 getter를 정의
+		get: function(){ return this.a * 2 },
+
+		// `b`가 객체 프로퍼티로 확실히 표시되게 한다.
+		enumerable: true
+	}
+);
+
+myObject.a; // 2
+
+myObject.b; // 4
+```
+
+프로퍼티에 접근하면 자동으로 getter 함수를 호출하여 어떤 값이라도 getter 함수가 반환한 값이 결괏값이 된다.
+
+```js
+var myObject = {
+	// `a`의 getter를 정의한다.
+	get a() {
+		return 2;
+	}
+};
+
+myObject.a = 3;
+
+myObject.a; // 2
+```
+
+할당문으로 값을 세팅하려고 하면 에러 없이 무시된다. setter가 커스텀 getter가 2만 반환하게 하드 코딩되어 있어서 마찬가지다.
+
+프로퍼티 단위로 기본 [[Put]] 연산(할당)을 오버라이드하는 setter가 정의되어야 한다. getter와 setter는 항상 둘 다 선언하는 것이 좋다.(한쪽만 선언하면 예상외의 결과가 나올 수 있다)
+
+```js
+var myObject = {
+	// `a`의 getter를 정의
+	get a() {
+		return this._a_;
+	},
+
+	// `a`의 setter를 정의
+	set a(val) {
+		this._a_ = val * 2;
+	}
+};
+
+myObject.a = 2;
+
+myObject.a; // 4
+```
+
+### 3-3-10 존재 확인
+
+객체에 어떤 프로퍼티가 존재하는지는 굳이 프로퍼티 값을 얻지 않고도 확인할 수 있다.
+
+```js
+var myObject = {
+	a: 2
+};
+
+("a" in myObject);				// true
+("b" in myObject);				// false
+
+myObject.hasOwnProperty( "a" );	// true
+myObject.hasOwnProperty( "b" );	// false
+```
+
+in 연산자는 어떤 프로퍼티가 해당 객체에 존재하는지 아니면 이 객체의 [[Prototype]] 연쇄(5장 프로토타입 참고)를 따라 갔을 때 상위 단계에 존재하는지 확인한다. 이와 달리 hasOwnProperty()는 단지 프로퍼티가 객체에 있는지만 확인하고 [[Prototype]] 연쇄는 찾지 않는다.
+
+거의 모든 일반 객체는 Object.prototype 위임(5장 프로토타입 참고)을 통해 hasOwnProperty()에 접근할 수 있지만 간혹 (Object.create(null)로, 5장 프로토타입 참고) Object.prototype과 연결되지 않은 객체는 myObject.hasOwnProperty() 처럼 사용할 수 없다.
+
+이럴 경우엔 Object.prototype.hasOwnproperty.call(myObject, "a") 처럼 기본 hasOwnProperty() 메서드를 빌려와 myObject에 대해 명시적으로 바인딩하면 좀 더 확실하게 확인할 수 있다.
+
+NOTE: 언뜻 in 연산자가 내부 값이 존재하는지까지 확인하는 것처럼 보이지만 실은 프로퍼티명이 있는지만 본다.
+
+#### 열거
+
+'열거 가능성' 개념으로 돌아가 좀 더 자세히 보자
+
+```js
+var myObject = { };
+
+Object.defineProperty(
+	myObject,
+	"a",
+	// make `a` enumerable, as normal
+	{ enumerable: true, value: 2 }
+);
+
+Object.defineProperty(
+	myObject,
+	"b",
+	// make `b` NON-enumerable
+	{ enumerable: false, value: 3 }
+);
+
+myObject.b; // 3
+("b" in myObject); // true
+myObject.hasOwnProperty( "b" ); // true
+
+// .......
+
+for (var k in myObject) {
+	console.log( k, myObject[k] );
+}
+// "a" 2
+```
+
+myObject.b는 for-in 루프에서는 자취가 사라진다. 이처럼 '열거 가능'하다는 건 기본적으로 '객체 프로퍼티 순회 리스트에 포함' 된다는 뜻이다.
+
+NOTE: for in 루프를 배열에 사용하면 배열 인덱스뿐만 아니라 다른 열거 가능한 프로퍼티까지 순회 리스트에 포함되는 원치 않은 결과가 발생할 수 있다. for in은 객체에만 쓰고 배열은 과거처럼 숫자 인덱스로 순회하는 편이 바람직하다.
+
+프로퍼티가 열거 가능한지는 다른 방법으로도 확인할 수 있다.
+
+```js
+var myObject = { };
+
+Object.defineProperty(
+	myObject,
+	"a",
+	// `a`를 열거가 가능하게 세팅한다.(기본값이다)
+	{ enumerable: true, value: 2 }
+);
+
+Object.defineProperty(
+	myObject,
+	"b",
+	// 'b'를 열거가 불가능하게 세팅한다.
+	{ enumerable: false, value: 3 }
+);
+
+myObject.propertyIsEnumerable( "a" ); // true
+myObject.propertyIsEnumerable( "b" ); // false
+
+Object.keys( myObject ); // ["a"]
+Object.getOwnPropertyNames( myObject ); // ["a", "b"]
+```
+
+propertyIsEnumerable()은 어떤 프로퍼티가 해당 객체의 직속 프로퍼티인 동시에 enumerable:true인지 검사한다.
+
+Object.keys()는 Object.getOwnPropertyNames()의 열거 가능 여부와 상관없이 객체에 있는 모든 열거 가능한 프로퍼티를 배열 형태로 반환한다.
+
+in과 hasOwnProperty()가 [[Prototype]] 연쇄의 확인에 따라 차이가 있는 반면, Object.keys()와 Object.getOwnPropertyNames()는 모든 주어진 객체만 확인한다.
+
+in 연산자와 결과(모든 프로퍼티를 전체 [[Prototype]] 연쇄에서 순회한다)가 동등한 프로퍼티 전체 리스트를 조회하는 기능은 없다. 단계마다 Object.keys()에서 열거 가능한 프로퍼티 리스트를 포착하여 재귀적으로 주어진 객체의 [[Prototpye]] 연쇄를 순회하는 식의 로직을 구현하여 대략 비슷한 유틸리티를 만들어 쓰면 된다.
