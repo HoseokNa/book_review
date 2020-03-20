@@ -3,6 +3,8 @@
 * [3-1 구문](#3-1-구문)
 * [3-2 타입](#3-2-타입)
 * [3-3 내용](#3-3-내용)
+* [3-4 순회](#3-4-순회)
+* [3-5 정리하기](#3-5-정리하기)
 
 다양한 객체를 가리키는 this 바인딩의 원리를 확인했었다. 그럼 객체는 무엇이고 왜 객체를 가리켜야 할까?
 
@@ -696,3 +698,138 @@ Object.keys()는 Object.getOwnPropertyNames()의 열거 가능 여부와 상관�
 in과 hasOwnProperty()가 [[Prototype]] 연쇄의 확인에 따라 차이가 있는 반면, Object.keys()와 Object.getOwnPropertyNames()는 모든 주어진 객체만 확인한다.
 
 in 연산자와 결과(모든 프로퍼티를 전체 [[Prototype]] 연쇄에서 순회한다)가 동등한 프로퍼티 전체 리스트를 조회하는 기능은 없다. 단계마다 Object.keys()에서 열거 가능한 프로퍼티 리스트를 포착하여 재귀적으로 주어진 객체의 [[Prototpye]] 연쇄를 순회하는 식의 로직을 구현하여 대략 비슷한 유틸리티를 만들어 쓰면 된다.
+
+## 3-4 순회
+
+프로퍼티 값을 순회하려면 어떻게 할까?
+
+```js
+var myArray = [1, 2, 3];
+
+for (var i = 0; i < myArray.length; i++) {
+	console.log( myArray[i] );
+}
+// 1 2 3
+```
+
+그러나 이 코드는 인덱스를 순회하면서 해당 값(myArray[i])을 사용할 뿐 값 자체를 순회하는 것은 아니다.
+
+ES5부터는 forEach(), every(), some() 등의 배열 관련 순회 헬퍼가 도입됐다. 이 함수들은 배열의 각 원소에 적용할 콜백 함수를 인자로 받으며, 원소별로 반환 값을 처리하는 로직만 다르다.
+
+forEach()는 배열 전체 값을 순회하지만 콜백 함수의 반환 값은 무시한다. every()는 배열 끝까지 또는 콜백 함수가 false(또는 'falsy' 값)을 반환할 때까지 순회하며 some()은 이와 정반대로 배열 끝까지 또는 콜백 함수가 true(또는 'truthy' 값)를 반환할 때까지 순회한다. every()와 some()의 이러한 특별한 반환 값은 일반적인 for 루프의 break 문처럼 사용한다.
+
+for in 루프를 이용한 객체 순회는 실제로 열거 가능한 프로퍼티만 순회하고 그 값을 얻으려면 일일이 프로퍼티에 접근해야 하므로 간접적인 값 추출이다.
+
+NOTE: 객체 프로퍼티의 순회 순서는 일정하지 않고 자바스크립트 엔진별로도 조금씩 다를 수 있다.
+
+배열 인덱스(혹은 객체 프로퍼티)가 아닌 값을 직접 순회하는 것도 가능할까? 다행히도 ES6붜 배열 순회용 for of 구문을 제공한다.
+
+```js
+var myArray = [ 1, 2, 3 ];
+
+for (var v of myArray) {
+	console.log( v );
+}
+// 1
+// 2
+// 3
+```
+
+for of 루프는 순회할 원소의 순회자 객체(Iterator Object 명세식으로 말하면 @@iterator라는 기본 내부 함수)가 있어야 한다. 순회당 한 번씩 이 순회자 객체의 next() 메서드를 호출하여 연속적으로 반환 값을 순회한다.
+
+배열은 @@iterator가 내장된 덕분에 다음 예제에서 보다시피 손쉽게 for of 루프를 사용할 수 있다. 내장 @@iterator를 이용하여 수동으로 배열을 순회하면서 작동 원리 살펴보자.
+
+```js
+var myArray = [ 1, 2, 3 ];
+var it = myArray[Symbol.iterator]();
+
+it.next(); // { value:1, done:false }
+it.next(); // { value:2, done:false }
+it.next(); // { value:3, done:false }
+it.next(); // { done:true }
+```
+
+NOTE: ES6부터는 Symbol.iterator 심볼로 객체 내부 프로퍼티인 @@iterator에 접근할 수 있다. 이런 특수 프로퍼티는 심볼에 포함될지 모를 특수값보다는 심볼명으로 참조하는 것이 좋다. @@iterator라는 명칭 때문에 순회자 객체란 느낌이 강한데 실은 순회자 객체를 반환하는 함수다.
+
+배열은 for of 루프 내에서 알아서 순회하지만, 일반 객체는 내부에 @@iterator가 없다.
+
+순회하려면 객체의 기본 @@iterator를 손수 정의할 수도 있다.
+
+```js
+var myObject = {
+	a: 2,
+	b: 3
+};
+
+Object.defineProperty( myObject, Symbol.iterator, {
+	enumerable: false,
+	writable: false,
+	configurable: true,
+	value: function() {
+		var o = this;
+		var idx = 0;
+		var ks = Object.keys( o );
+		return {
+			next: function() {
+				return {
+					value: o[ks[idx++]],
+					done: (idx > ks.length)
+				};
+			}
+		};
+	}
+} );
+
+// `myObject`를 수동으로 순회한다.
+var it = myObject[Symbol.iterator]();
+it.next(); // { value:2, done:false }
+it.next(); // { value:3, done:false }
+it.next(); // { value:undefined, done:true }
+
+//`myObject`를 `for..of` 루프로 순회한다.
+for (var v of myObject) {
+	console.log( v );
+}
+// 2
+// 3
+```
+
+예제 코드에선 단순히 값 대 값으로 순회하고 있지만 필요에 따라 사용자 자료 구조에 딱 맞는 임의의 복잡한 순회 알고리즘을 정의할 수도 있다. ES6의 for of 루프와 커스텀 순회자는 사용자 정의 객체를 조작하는데 아주 탁월한 새로운 구문 도구다.
+
+순회가 절대로 끝나지 않고 항상 새로운 값(랜덤값, 중분값, 유일한 식별자 등)을 반환하는 무한 순회자도 가능하다. 하지만 이러헥 순회자로 for of 루프의 경계를 무너뜨리면 결국 실행이 멈추지 않아 프로그램이 멎을 수 있다.
+
+```js
+var randoms = {
+	[Symbol.iterator]: function() {
+		return {
+			next: function() {
+				return { value: Math.random() };
+			}
+		};
+	}
+};
+
+var randoms_pool = [];
+for (var n of randoms) {
+	randoms_pool.push( n );
+
+	// 제한 없이 사용한다.
+	if (randoms_pool.length === 100) break;
+}
+```
+
+이 코드의 순회자는 난수를 무한히 생성하므로 프로그램이 멎지 않도록 100개만 추출해야 한다.
+
+## 3-5 정리하기
+
+자바스크립트 객체는 리터럴 형식(var a= {})과 생성자 형식(var a = new Array()) 두 가지 형태를 가진다. 대부분 리터럴 형식을 쓰는 편이 좋지만 생성 시 옵션을 더 주기 위해 생성자 형식을 쓰는 경우도 더러 있다.
+
+많은 사람이 "자바스크립트는 모든 것이 다 객체다"라고 말하지만 사실과 다르다. 객체는 6개(관점에 따라 7개가 될 수도 있다)의 원시 타입 중 하나고 함수를 비롯한 하위 타입이 있다. 이를테면 내부적으로 [object Array]라는 레이블로 표시되는 배열 객체라는 독특한 하위 타입도 가능하다.
+
+객체는 키/값의 쌍을 모아 놓은 저장소고 값은 프로퍼티를 통해 (.propname or ["propName"]) 접근할 수 있다. 프로퍼티에 접근하면 엔진 내부에서는 실제로 기본 [[Get]] (값을 세팅할 때는 [[Put]]) 연산을 호출하는데, 객체 자체에 포함된 프로퍼티뿐만 아니라 필요하면 [[Prototype]] 연쇄를 순회하며 찾아본다.
+
+프로퍼티는 프로퍼티 서술자를 통해 제어 가능한 writable, configurable 등의 특정한 속성을 지닌다. 그리고 객체는 Object.preventExtensions(), Object.seal(), Object.freeze() 등을 이용하여 자신에게 (그리고 자신이 가지고 있는 프로퍼티까지) 여러 단계의 불변성을 적용할 수 있다.
+
+프로퍼티가 반드시 값을 가져야 하는 것은 아니며 게터/세터로 '접근자 프로퍼티' 형태를 취할수도 있다. 예를 들어, 열거 가능성을 조정하여 for in 루프 순회 시 노출 여부를 마음대로 바꿀 수 있다.
+
+ES6부터는 for of 구문에서 한 번에 하나씩 다음 데이터값으로 이동하는 next() 메서드를 가진 내장/커스텀 @@iterator 객체를 통해 자료 구조(배열, 객체 등)에서 여러 값을 순회할 수 있다.
