@@ -14,3 +14,4 @@
 - [You Don't Know JS(타입과 문법)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(TYPE_GRAMMAR))
 - [You Don't Know JS(스코프와 클로저)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(SCOPE_CLOSURES))
 - [You Don't Know JS(this와 객체 프로토타입)](https://github.com/HoseokNa/book_review/tree/master/YOU_DONT_KNOW_JS(THIS_OBJECT_PROTOTYPE))
+- [자바스크립트 패턴과 테스트](https://github.com/HoseokNa/book_review/tree/master/자바스크립트_패턴과_테스트)
