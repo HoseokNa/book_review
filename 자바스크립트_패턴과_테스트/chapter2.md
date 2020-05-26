@@ -1,5 +1,7 @@
 # 2장 도구 다루기
 
+[2-1 테스팅 프레임 워크](#2-1-테스팅-프레임-워크)
+
 ## 2-1 테스팅 프레임 워크
 
 예를 들어 항공 예약 데이터 생성 모듈을 맡게 되었는데, 그 중에는 다음과 같은 모듈 함수가 있었다.
@@ -124,3 +126,138 @@ toBe 매처는 이름에서 짐작할 수 있듯이 testReservation.passengerInf
 #### 스파이
 
 재스민 스파이(spy)는 **테스트 더블**(test double) 역할을 하는 자바스크립트 함수다. 테스트 더블은 어떤 함수/객체의 본래 구현부를 테스트 도중 다른 (보통은 더 간단한) 코드로 대체한 것을 말하며, 웹 서비스 같은 외부 자원과의 의존 관계를 없애고 단위 테스트의 복잡도를 낮출 목적으로 사용된다.
+
+다음 다섯 가지를 통칭하여 테스트 더블이라고 한다.
+
+* 더미(dummy) : 보통 인자 리스트를 채우기 위해 사용되며, 전달은 하지만 실제로 사용되지는 않는다.
+* 틀(stub) : 더미를 조금 더 구현하여 아직 개발되지 않은 클래스나 메서드가 실제 작동하는 것처럼 보이게 만든 객체로 보통 리턴값은 하드 코딩한다.
+* 스파이(spy) : 틀과 비슷하지만 내부적으로 기록을 남긴다는 점이 다르다. 특정 객체가 사용되었는지, 예상되는 메서드가 특정한 인자로 호출되었는지 등의 상황을 감시(spying)하고 이러한 정보를 제공하기도 한다.
+* 모의체(fake) : 틀에서 조금 더 발전하여 실제로 간단히 구현된 코드를 갖고는 있지만, 운영 환경에서 사용할 수는 없는 객체다.
+* 모형(mock) : 더미, 틀, 스파이를 혼합한 형태와 비슷하나 행위를 검증하는 용도로 주로 사용된다. 
+
+생성된 예약 데이터를 데이터베이스에 저장하는 웹 서비스와 직접 통신할 수 있게 createReservation 함수를 확장하는 문제를 앞서 간략히 살펴봤다.
+
+ReservationSaver라는 자바스크립트 객체를 만들어 이 객체의 saveReservation 함수로 웹 서비스에 예약 데이터를 전송하는 기능을 캡슐화 했다. createResevation 함수를 확장하여 이 함수가 ReservationSaver 인스턴스를 인자로 받아 이 인스턴스의 saveReservation 함수를 실행하는지 확인하고자 한다.
+
+saveReservation 함수는 웹서비스와 통신하므로 지금부터 작성할 테스트는 예약 데이터 저장 후 DB를 질의하고 예약 데이터가 분명히 추가됐는지 확인하는 과정이 모두 들어가야 할 듯싶다. 하지만 그럴 필요도 없고 그래서는 안 된다. 자칫 단위 테스트가 웹 서비스, DB 같은 외부 시스템 유무와 작동 여부에 의존하게 될지도 모른다.
+
+>> TIP : 외부 시스템과 연동하는 코드에 이상이 없는지 확인하는 테스트를 통합 테스트(integration test)라 한다. 소프트웨어를 바르게 작성하는 데 중요한 과정이지만, 단위 테스트와는 분명히 구별해야 한다. 여기서는 ResevationSaver 객체에 해당하는 통합 테스트를 잘 마련해두었다고 가정한다.
+
+재스민 스파이를 사용하면 복잡한 saveReservation 구현부를 외부 시스템 의존성을 배제한, 단순한 형태로 바꿀 수 있다. 먼저 ReservationSaver 객체를 보자.
+
+```js
+function ReservationSaver() {
+  this.saveReservation = function(reservation) {
+    // 예약 정보를 젖아하는 웹 서비스와 연동하는 복잡한 코드가 있을 것이다.
+  }
+}
+```
+
+createReservation 함수는 ReservationSaver 인스턴스를 전달받게끔 개선됐다. ReservationSaver를 인자로 받으므로 예약 데이터가 저장되었는지 확인사는 테스트를 다음과 같이 작성할 수 있다.
+
+```js
+describe('createReservation', function() {
+  it('예약 정보를 저장한다.', function() {
+    var saver = new ReservationSaver();
+    // testPassenger와 testFlight는 테스트 꾸러미의 beforeEach로 이미 설정 됐다고 가정하자
+    createReservation(testPassenger, testFlight, saver);
+
+    // saver.saveReservation(...) 이 정말 호출되는지 어떻게 알 수 있을까?
+  });
+});
+```
+
+이 테스트 코드에 씌어있는 대로 복잡한 ReservationSaver의 기본 구현부를 createReservation 함수에 전달하고 있다. 이렇게 하면 결국 외부 시스템에 의존하게 되고 함수를 테스트하기가 어려워지므로 별로 내키지 않는다. 바로 이럴 때 재스민 스파이가 제격이다.
+
+createReservation을 호출하기 전에 saveReservation 함수에 스파이를 심는다. 스파이로 함수 실행 여부를 알 수 있다.
+
+재스민에서 전역 함수 spyOn을 쓰면 특정 함수를 몰래 들여다볼 수 있다. 이 함수의 첫 번째 인자는 객체 인스턴스, 두 번째 인자는 감시할 함수명이다. 다음과 같이 스파이를 심은 코드로 바꿔보자.
+
+```js
+describe('createReservation', function() {
+  it('예약 정보를 저장한다.', function() {
+    var saver = new ReservationSaver();
+    spyOn(saver, 'saveReservation');
+    // testPassenger와 testFlight는 테스트 꾸러미의 beforeEach로 이미 설정 됐다고 가정하자
+    createReservation(testPassenger, testFlight, saver);
+
+    // saver.saveReservation(...) 이 정말 호출되는지 어떻게 알 수 있을까?
+  });
+});
+```
+
+스파이를 써서 saver 객체의 saveReservation 구현부를 예약 데이터 저장 기능과 무관한 함수로 대체했다. 스파이는 함수를 호출한 시점과 호출 시 전달한 인자까지 정확히 포착하고, 무엇보다 재스민은 어떤 스파이가 한 번 이상 실행됐는지 확인하는 기대식을 지닌 스파이 전용 매처를 지원한다. 다음과 같이 기대식까지 추가하면 완벽한 테스트다.
+
+```js
+describe('createReservation', function() {
+  it('예약 정보를 저장한다.', function() {
+    var saver = new ReservationSaver();
+    spyOn(saver, 'saveReservation');
+    // testPassenger와 testFlight는 테스트 꾸러미의 beforeEach로 이미 설정 됐다고 가정하자
+    createReservation(testPassenger, testFlight, saver);
+
+    expect(saver.saveReservation).toHaveBeenCalled();
+  });
+});
+```
+
+createReservation 함수의 인자가 늘었으니 기존 두 테스트 역시 수정할 수밖에 없다. 하지만 saveReservation 함수 구현부를 직접 실행할 테스트는 없을 테니 ReservationSaver 생성 코드와 스파이 관련 코드를 전체 꾸러미의 beforeEach 함수로 옮겨 리팩토링한다.
+
+```js
+describe('createReservation(passenger, flight, saver)', function() {
+  var testPassenger = null,
+    testFlight = null,
+    testReservation = null,
+    testSaver = null;
+
+  beforeEach(function() {
+    testPassenger = {
+      firstName: '윤지',
+      lastName: '김'
+    };
+
+    testFlight = {
+      number: '3443',
+      carrier: '대한항공',
+      destination: '울산'
+    };
+
+    testSaver = new ReservationSaver();
+    spyOn(testSaver, 'saveReservation');
+
+    testReservation = createReservation(testPassenger, testFlight, testSaver);
+  });
+
+  it('passenger를 passengerInformantion 프로퍼티에 할당한다', function() {
+    expect(testReservation.passengerInformation).toBe(testPassenger);
+  });
+
+  it('주어진 flight를 flightInformation 프로퍼티에 할당한다', function() {
+    expect(testReservation.flightInformation).toBe(testFlight);
+  });
+
+  it('예약 정보를 저장한다', function() {
+    expect(testSaver.saveReservation).toHaveBeenCalled();
+  });
+});
+```
+
+createReservation 함수도 수정한다.
+
+```js
+function createReservation(passenger, flight, saver) {
+   var reservation = {
+    passengerInformation: passenger,
+    flightInformation: flight
+  };
+
+  saver.saveReservation(reservation);
+  return reservation;
+}
+
+function ReservationSaver() {
+  this.saveReservation = function(reservation) {
+    // 예약 정보를 저장하는 웹서비스와 연동하는 복잡한 코드가 있을 것이다.
+  };
+}
+```
