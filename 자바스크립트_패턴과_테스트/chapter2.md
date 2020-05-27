@@ -1,6 +1,7 @@
 # 2장 도구 다루기
 
 [2-1 테스팅 프레임 워크](#2-1-테스팅-프레임-워크)
+[2-2 의존성 주입 프레임워크](#2-2-의존성-주입-프레임워크)
 
 ## 2-1 테스팅 프레임 워크
 
@@ -261,3 +262,214 @@ function ReservationSaver() {
   };
 }
 ```
+
+## 2-2 의존성 주입 프레임워크
+
+의존성 **역전**이 5대 SOLID 개발 요소 중 하나고, 의존성 **주입**은 이를 실현하기 위한 메커니즘이라고 했다. 이 절에서는 유연하면서도 엄격한 의존성 주입 프레임워크를 개발한다.
+
+### 2-2-1 의존성 주입이란?
+
+승현은 좌석 예약 기능을 갖춘 클라이언트 측 코드 개발을 맡았다.
+
+우선 ConferenceWebSvc 객체에 서비스를 캡슐화하고 멋집 팝업 메시지를 화면에 표시할 자바스크립트 객체 Messenger를 작성한다.
+
+참가자는 1인당 세션을 10개까지 등록할 수 있다. 참가자가 한 세션을 등록하면 그 결과를 성공/실패 메시지로 화면에 표시하는 함수를 개발해야 한다.
+
+```js
+Attendee = function(attendeeId) {
+
+  // 'new'로 생성하도록 강제한다.
+  if (!(this instanceof Attendee)) {
+    return new Attendee(attendeeId);
+  }
+
+  this.attendeeId = attendeeId;
+
+  this.service = new ConferenceWebSvc();
+  this.messenger = new Messenger();
+};
+
+// 주어진 세션에 좌석을 예약 시도한다.
+// 성공/실패 여부를 메시지로 알려준다.
+Attendee.prototype.reserve = function(sessionId) {
+  if (this.service.reserve(this.attendeeId, sessionId)) {
+    this.messenger.success('좌석 예약이 완료되었습니다!' +
+      ' 고객님은 ' + this.service.getRemainingReservations() +
+      ' 좌석을 추가 예약하실 수 있습니다.');
+  }  else {
+    this.messenger.failure('죄송합니다, 해당 좌석은 예약하실 수 없습니다.');
+  }
+};
+```
+
+이 코드는 일견 ConferenceWebSvc, messenger, Attendee 객체가 각자 자신만의 임무를 갖고 아름다운 모듈로 조화를 이룬 것처럼 보인다. ConferenceWebSvc 내부에는 HTTP 호출이 있다. 이렇게 HTTP 통신이 필요한 코드는 단위 테스트를 어떻게 할까? 그리고 Messenger는 메시지마다 OK 버튼이 있어야 하는데, 이 또한 이 모듈에서 단위 테스트할 대상은 아니다. 모든 단위가 미처 준비도 되기 전에 시스템 테스트의 늪으로 빠지는 게 싫다.
+
+요는, Attendee 객체가 아니라 이 객체가 의존하는 코드다. 의존성을 주입하는 식으로 바꾸면 해결할 수 있다. 실제 운영 환경에서는 진짜 의존성을 주입하겠지만, 단위 테스트용으로는 모의체(fake)나 재스민 스파이 같은 대체제를 주입하면 된다.
+
+```js
+
+// 운영 환경:
+var attendee = new Attendee(new ConferenceWebSvc(), new Messenger(), id);
+
+// 개발(테스트) 환경:
+var attendee = new Attendee(fakeService, fakeMessenger, id);
+```
+
+이처럼 DI 프레임워크를 사용하지 않고 의존성을 주입하는 것을 두고 '빈자의 의존성 주입(poor man's dependency injection)'이라 한다. 다음은 빈자의 의존성 주입 방식으로 작성한 Attendee 객체다.
+
+```js
+Attendee = function(service, messenger, attendeeId) {
+   // 'new'로 생성하도록 강제한다.
+  if (!(this instanceof Attendee)) {
+    return new Attendee(attendeeId);
+  }
+
+  this.attendeeId = attendeeId;
+
+  this.service = service;
+  this.messenger = messenger;
+};
+```
+
+### 2-2-2 의존성을 주입하여 믿음직한 코드 만들기
+
+아무래도 테스트를 통과한, 자도화한 테스트 꾸러미로 계속 테스트할 수 있는 코드가 더 믿음직하다.
+
+이뿐만 아니라, DI는 실제 객체보다 주입한 스파이나 모의 객체에 더 많은 제어권을 안겨주므로 다양한 에러 조건과 기이한 상황을 만들어내기 쉽다. 혹시 모를 만약의 사태를 폭넓게 커버할 수 있게 테스트를 작성할 수 있다.
+
+또한, DI는 코드 재사용을 적극적으로 유도한다. 의존성을 품은, 하드 코딩한 모듈은 무거운 짐을 질질 끌고 다니는 터라 보통 재사용하기 어렵다.
+
+### 2-2-3 의존성 주입의 모든 것
+
+어떤 객체를 코딩하든 어떤 객체를 생성하든지 스스로 다음 질문을 해보자. 한 가지라도 답변이 "예"라면 직접 인스턴스화(instantiation)하지 말고 주입하는 방향으로 생각을 전환하라.
+
+* 객체 또는 의존성 중 어느 하나라도 DB, 설정 파일, HTTP, 기타 인프라 등의 외부 자원에 의존하는가?
+* 객체 내부에서 발생할지 모를 에러를 테스트에서 고려해야 하나?
+* 특정한 방향으로 객체를 작동시켜야 할 테스트가 있는가?
+* 서드파티(third-party) 제공 객체가 아니라 온전히 내가 소유한 객체인가?
+
+좋은 의존성 주입 프레임워크를 골라 써야 API랑 친해지기 쉽고 여러모로 도움이 된다. 다음 절을 참고하자.
+
+### 2-2-4 사례 연구: 경량급 의존성 주입 프레임워크 개발
+
+지금까지는 의존성 주입을 하드코딩했다. 전문가다운 의존성 주입 프레임워크는 이렇게 작동한다.
+
+1. 애플리케이션이 시작되자마자 각 인젝터블(injectable) 명을 확인하고 해당 인젝터블이 지닌 의존성을 지칭하며 순서대로 DI 컨테이너에 등록한다.
+2. 객체가 필요하면 컨테이너에 요청한다.
+3. 컨테이너는 일단 요청받은 객체와 그 의존성을 모두 재귀적으로 인스턴스화한다. 그런 다음, 요건에 따라 필요한 객체에 각각 주입한다.
+
+DI 컨테이너를 직접 만들면서 프레임워크의 작동 원리를 알아보자.
+
+컨테이너는 인젝터블과 의존성을 등록하고, 요청 시 객체를 내어주는 두 가지 일을 한다.
+
+register 함수의 인자는 세 가지다.
+
+* 인젝터블 명
+* 의존성 명을 담은 배열
+* 인젝터블 객체를 반환하는 함수. 인젝터블 인스턴스를 요청하면 컨테이너는 이 함수를 호출하여 반환값을 다시 그대로 반환한다. 또한, 컨테이너는 요청받은 객체의 의존성 인스턴스 역시 이 함수에 전달하는데, 곧 이어지는 테스트에서 다시 설명한다.
+
+TDD는 단계마다 가급적 조금씩 코딩하는 게 좋다. 빈 register를 먼저 생각해보자. 이 함수는 DIContainer의 인스턴스가 모두 공유하는 자산이므로 프로토타입에 둔다.
+
+```js
+DiContainer = function() {
+};
+
+DiContainer.prototype.register = function(name,dependencies,func) {
+  // 처음 버전이라 하는 일이 없다.
+};
+```
+
+좋은 코드를 짜려면 인자가 제대로 전달됐는지, 타입은 올바른지 확인해야 한다. 후속 테스트들이 기반을 둘 첫 번째 테스트를 잘 작성해야 확실한 토대를 마련할 수 있다.
+
+```js
+describe('DiContainer', function() {
+  var container;
+  beforeEach(function() {
+    container = new DiContainer();
+  });
+  describe('register(name,dependencies,func)', function() {
+
+    // 01
+    it('인자가 하나라도 누락되었거나 타입이 잘못되면 예외를 던진다', function() {
+      var badArgs = [
+        // 인자가 아예 없는 경우
+        [],
+        // name만 있는 경우
+        ['Name'],
+        // name과 dependencies만 있는 경우
+        ['Name',['Dependency1','Dependency2']],
+        // dependencies가 누락된 경우
+        // (상용 프레임워크는 지원하지만 DiContainer는 지원하지 않음)
+        ['Name', function() {}],
+        // 타입이 잘못된 다양한 사례들
+        [1,['a','b'], function() {}],
+        ['Name',[1,2], function() {}],
+        ['Name',['a','b'], 'should be a function']
+      ];
+      badArgs.forEach(function(args) {
+        expect(function() {
+          container.register.apply(container,args);
+        }).toThrow();
+      });
+    });
+  });
+});
+```
+
+이 테스트의 내용을 정리해보자.
+
+* container는 '테스트 대상'으로 beforeEach에서 생성된다. 테스트마다 인스턴스를 갓 구워내면 다른 테스트의 결과를 어지럽히지 않아도 된다.
+* 중첩된 describes와 it 함수가 인자로 받은 문자열을 죽 이어서 읽어보면 "DiContainer register (name,dependencies,func)는 인자가 하나라도 누락되었거나 타입이 잘못되면 예외를 던진다."는 문장이 된다.
+* TDD 순수주의자는 badArgs 원소마다 테스트를 따로 만들라고 하겠지만, 기대식 한 개와 서술문 한 개로 모든 테스트를 묶어 작성해도 무방하다.
+
+테스트를 실행하면 실패한다.
+
+DiContainer.register에 인자 체크 기능을 넣어야 성공한다.
+
+```js
+DiContainer = function() {
+    // 생성자에 의해 객체가 생성되도록 강제한다.
+  if (!(this instanceof DiContainer)) {
+    return new DiContainer();
+  }
+};
+
+DiContainer.prototype.messages = {
+  registerRequiresArgs: '이 생성자 함수는 인자가 3개 있어야 합니다: ' +
+    '문자열, 문자열 배열, 함수.'
+};
+
+DiContainer.prototype.register = function(name,dependencies,func) {
+  var ix;
+
+  if (typeof name !== 'string'
+  || !Array.isArray(dependencies)
+  || typeof func !== 'function') {
+    throw new Error(this.messages.registerRequiresArgs);
+  }
+  for (ix=0; ix<dependencies.length; ++ix) {
+    if (typeof dependencies[ix] !== 'string') {
+      throw new Error(this.messages.registerRequiresArgs);
+    }
+  }
+};
+```
+
+테스트는 성공한다.
+
+코드를 잘 뜯어보면 메시지가 프로토타입에 있어서 외부에 드러나 있다. 이런 식으로 테스트를 더 견고하게 작성할 수 있다. 단지 함수가 toThrow()할 거라 기대하지 말고, 다음과 같이 바꾸면 더 명확한 테스트가 된다.
+
+```js
+.toThrowError(container.messages.registerRequiresArgs);
+```
+
+register 함수는 여전히 아무 일도 하지 않지만, 이 함수만으로는 의존성을 다시 끌어낼 방법이 없으므로 컨테이너에 의존성이 잘 들어갔는지 테스트하기 어렵다.
+
+따라서 나머지 반쪽 get 함수에 관심이 쏠리다. 이 함수의 유일한 인자는 조회할 의존성 명이다.
+
+우선 인자부터 확인해보는 게 좋다. 에러 체크는 가능한 한 빨리 해야 바른 코드가 만들어진다. '코드를 다 짤 떄까지' 내버려 뒀다간 그사이 다른 관심사로 넘어가 버리기에 십상이다.
+
+>> TIP : 에러 처리 코드를 제일 먼저 테스트하라. 그다음 다른 업무로 넘어가도 늦지 않다.
+
+```js
+
