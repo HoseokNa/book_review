@@ -472,4 +472,179 @@ register 함수는 여전히 아무 일도 하지 않지만, 이 함수만으로
 >> TIP : 에러 처리 코드를 제일 먼저 테스트하라. 그다음 다른 업무로 넘어가도 늦지 않다.
 
 ```js
+describe('get(name)', function() {
+    it('성명이 등록되어 있지 않으면 undefined를 반환한다', function() {
+      expect(container.get('notDefined')).toBeUndefined();
+    });
+});
+```
 
+get 함수 자체가 없으니 테스트는 실패할 것이다. TDD 사상에 따라 당장 에러를조치할 만큼의 코딩만 한다.
+
+```js
+DiContainer.prototype.get = function(name) {
+};
+```
+
+테스트가 성공한다. 지금 여기서 다른 코드가 들어차 있으면 테스트를 앞질러 가버린 셈이다.
+
+>> TIP : 코드가 전혀 없어도 좋으니 테스트를 성공시킬 최소한의 코드만 작성하라. 애플리케이션 코드가 테스트보다 앞서 나가면 안된다.
+
+```js
+// 2-6
+it('등록된 함수를 실행한 결과를 반환한다', function() {
+  var name = 'MyName',
+      returnFromRegisteredFunction = "something";
+  container.register(name,[], function() {
+    return returnFromRegisteredFunction;
+  });
+  expect(container.get(name)).toBe(returnFromRegisteredFunction);
+});
+```
+
+name과 returnFromRegisteredFunction 변수로 테스트를 DRY하게 유지한 채 자기 서술적인(self-documenting) 기대식을 만들었다.
+
+>> TIP : 리터럴 대신 변수명을 잘 정해서 DRY하고 자기 서술적인 테스트를 작성하라.
+
+register로 등록한 데이터를 저장하고 get으로 다시 추출할 수 있으면 테스트는 성공이다. 앞서 나온 코드는 생략
+
+```js
+DiContainer = function() {
+  // ... 생략
+  this.registrations = [];
+};
+
+DiContainer.prototype.register = function(name,dependencies,func) {  
+  // ... 생략
+  this.registrations[name] = { func: func };
+};
+
+DiContainer.prototype.get = function(name) {
+  return this.registrations[name].func();
+};
+```
+
+새로 짠 테스트는 성공하지만(2-6), 코드가 전혀 없을 때 성공했던 이전 테스트는 실패하다.
+
+미등록 함수 케이스를 처리하도록 get을 고치면 테스트는 모두 성공한다
+
+```js
+DiContainer.prototype.get = function(name) {
+  var registration = this.registrations[name];
+  if (registration === undefined) {
+    return undefined;
+  }
+  return registration.func();
+};
+```
+
+이제 get은 자신이 반환하는 객체에 의존성을 제공할 수 있다.
+
+다음 예제는 1개의 메인 객체와 2개의 의존성을 등록하는 테스트로, 메인 개겣는 두 의존성의 반환값을 합한 값을 반환한다.
+
+```js
+DiContainer.prototype.register = function(name,dependencies,func) {
+
+  var ix;
+
+  if (typeof name !== 'string' ||
+     !Array.isArray(dependencies) ||
+     typeof func !== 'function') {
+    throw new Error(this.messages.registerRequiresArgs);
+  }
+  for (ix=0; ix<dependencies.length; ++ix) {
+    if (typeof dependencies[ix] !== 'string') {
+      throw new Error(this.messages.registerRequiresArgs);
+    }
+  }
+
+  this.registrations[name] = { dependencies: dependencies, func: func };
+};
+
+DiContainer.prototype.get = function(name) {
+  var self = this,
+      registration = this.registrations[name],
+      dependencies = [];
+  if (registration === undefined) {
+    return undefined;
+  }
+
+  registration.dependencies.forEach(function(dependencyName) {
+    var dependency = self.get(dependencyName);
+    dependencies.push( dependency === undefined ? undefined : dependency);
+  });
+  return registration.func.apply(undefined, dependencies);
+};
+```
+
+register 함수에서 registrations[name] 객체에 의존성을 추가한 다음, get 함수에서 registration.dependencies에 접근하는 부분이 달라졌다.
+
+이 예제를 통해 테스트 주도 개발 정신을 교감하고 일반적인 자바스크립트 DI 컨테이너의 작동 원리를 감 잡았기를 바란다.
+
+### 2-2-5 의존성 주입 프레임워크 활용
+
+이제 적합한 DI 컨테이너를 마련했으니 객체를 생성할 때마다 의존성을 하드 코딩해서 넣지 않아도 된다. 대규모 자바스크립트 애플리케이션의 출발점은 보통 설정 루틴인데, 의존성 주입 설정을 하기 적절한 지점이기도 하다.
+
+전역 객체 MyApp 내부에서 작동하는 애플리케이션은 다음과 같은 설정 코드를 생각할 수 있다.
+
+```js
+MyApp = {};
+
+MyApp.diContainer = new DiContainer();
+
+MyApp.diContainer.register(
+  'Service',  // 웹 서비스를 가리키는 DI 태그
+  [], // 의존성 없음
+  // 인스턴스를 반환하는 함수
+  funtion() {
+    return new ConferenceWebSvc();
+  }
+);
+
+MyApp.diContainer.register(
+  'Messenger',
+  [],
+  function() {
+    return new Messenger();
+  }
+);
+
+MyApp.diContainer.register(
+  'AttendeeFactory',
+  ['Service', 'Messenger'], // Attendee는 service 및 messenger에 의존한다.
+  function(service, messenger){
+    return function(attendeeId){
+      return new Attendee(service, messenger, attendeeId);
+    }
+  }
+);
+```
+
+Attendee를 만드는 함수가 아닌, Attendee를 만들 팩토리를 만드는 함수가 등록을 대신한다.
+
+보시다시피 팩토리가 있으면 애플리케이션 깊숙한 곳에서도 DI 컨테이너로부터 Attendee를 가져올 수 있다.
+
+```js
+var attendeeId = 123;
+var sessionId = 1;
+
+// DI 컨테이너에서 attendeeId를 넘겨 Attendee를 인스턴스화한다.
+var attendee = MyApp.diContainer.get('AttendeeFactory')(attendeeId);
+attendee.reserve(sessionId);
+```
+
+### 2-2-6 최신 의존성 주입 프레임워크
+
+AngularJS와 RequireJS는 많이 사용되는 오픈 소스 의존성 주입 프레임워크로 각자 독특한 장점이 있다.
+
+#### RequireJS
+
+RequireJS는 이 장에서 개발한 DiContainer와 구문이 흡사하다. DiContainer의 register 함수는 리콰이어JS의 전역 함수 define에, get(모듈명) 함수는 require(모듈 URL)에 각각 대응된다.
+
+#### AngularJS
+
+AngularJS는 단순한 DI 컨테이너 이상의 물건으로, 단일 페이지 애플리케이션(SPA) 제작에 와넞ㄴ히 '독자적으로 특화된' 프레임워크다.
+
+AngularJS의 의존성 주입은 그 형태가 무척 다양하다. 각각 다른 객체 타입에 맞는 DiContainer.register 같은 함수가 여럿 비치되어 있다.
+
+AngularJS가 독자적 프레임워크라고는 하지만, 중요한 기능 대부분은 마음껏 주무를 수 있다. 의존성 주입기가 마음에 안 들면 직접 만들어 사용해도 좋다.
