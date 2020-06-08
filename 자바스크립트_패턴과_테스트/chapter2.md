@@ -1,7 +1,8 @@
 # 2장 도구 다루기
 
-[2-1 테스팅 프레임 워크](#2-1-테스팅-프레임-워크)
-[2-2 의존성 주입 프레임워크](#2-2-의존성-주입-프레임워크)
+* [2-1 테스팅 프레임 워크](#2-1-테스팅-프레임-워크)
+* [2-2 의존성 주입 프레임워크](#2-2-의존성-주입-프레임워크)
+* [2-3 애스팩트 툴킷](#2-3-애스팩트-툴킷)
 
 ## 2-1 테스팅 프레임 워크
 
@@ -648,3 +649,578 @@ AngularJS는 단순한 DI 컨테이너 이상의 물건으로, 단일 페이지 
 AngularJS의 의존성 주입은 그 형태가 무척 다양하다. 각각 다른 객체 타입에 맞는 DiContainer.register 같은 함수가 여럿 비치되어 있다.
 
 AngularJS가 독자적 프레임워크라고는 하지만, 중요한 기능 대부분은 마음껏 주무를 수 있다. 의존성 주입기가 마음에 안 들면 직접 만들어 사용해도 좋다.
+
+## 2-3 애스팩트 툴킷
+
+애스팩트 지향 프로그래밍(AOP)은 (단일한 책임 범위 내에 있지 않은) 하나 이상의 객체에 유용한 코드를 한데 묶어 눈에 띄지 않게 객체에 배포하는 기법이다.
+
+AOP 용어로, 배포할 코드 조각을 **어드바이스**(advice), 어드바이스가 처리할 문제를 **애스팩트**(aspect) 또는 **횡단 관심사**(cross-cutting concern)라고 한다.
+
+### 2-3-1 사례 연구: AOP 있는/없는 캐싱
+
+앞 절의 자바스크립트 콘퍼런스로 다시 돌아가자. 행사 주최자는 비용 문제로 항공권 판매 여행사와 제휴를 맺었다. 웹 개발자는 로그인한 참가자가 원하는 지역 공항의 항공권 할인 운임을 조회하는 웹 서비스를 호출해야 한다.웹 서비스 호출은 시간이 걸리기 마련이다. 따라서 참가자 본인이 공항을 바꾸지 않는 한 해당 항공권 정보를 캐시하기로 한다. 캐싱은 횡단 관심사 이다.
+
+#### AOP 없는 캐싱
+
+다음은 모듈 생성 패턴을 적용한 캐싱 없는 함수의 구현부다.
+
+```js
+// 콘퍼런스에 해당하는 파라미터를 제공하여
+// 여행사의 원래 웹 서비스를 래핑한다.
+
+TravelService = (function(rawWebService){
+  var conferenceAirport = 'BOS';
+  var maxArrival = new Date(/* 날짜 */);
+  var minDeparture = new Date(/* 날짜 */);
+
+  return {
+    getSuggestedTicket: function(homeAirport) {
+      // 고객이 전체 콘퍼런스에 참가할 수 있게
+      // 해당 지역의 공항에서 가장 저렴한 항공권을 조회한다.
+      return rawWebService.getCheapestRoundTrip(
+        homeAirpot, conferenceAirpot,
+        maxArrival, minDeparture);
+    }
+  };
+})();
+
+// 광고 정보를 가져온다.
+
+TravelService.getSuggestedTicket(attendee.homeAirport);
+```
+
+이제 AOP 없는 캐싱을 추가하자.
+
+```js
+TravelService = (function(rawWebService){
+  var conferenceAirport = 'BOS';
+  var maxArrival = new Date(/* 날짜 */);
+  var minDeparture = new Date(/* 날짜 */);
+
+  // 간단한 캐싱: 인덱스는 공항이고 객체는 티켓이다.
+  var cache = [];
+
+  return {
+    getSuggestedTicket: function(homeAirport) {
+      var ticket;
+      if(cache[homeAirport]) {
+        return cache[homeAirpot];
+      }
+
+      ticket = rawWebService.getCheapestRoundTrip(
+        homeAirpot, conferenceAirpot,
+        maxArrival, minDeparture);
+
+      cache[homeAirpot] = ticket;
+
+      return ticket;
+    }
+  };
+})();
+```
+
+작동은 잘 되지만 getSuggestedTicket 코드가 갑절이 불어났다. getSuggestedTicket을 그대로 둔 상태에서 기능만 추가하면 좋을 것이다.
+
+바로 이런 일들을 애스팩트 지향 프로그래밍으로 할 수 있다. AOP 프레임워크로 개발하면 원본 코드를 하나도 건드리지 않은 채 애플리케이션 시동 로직에 코드를 넣을 수 있다.
+
+```js
+Aop.around('getSuggestedTicket', cacheAspectFactory());
+```
+
+cacheAspectFactory()는 모든 호출을 가로챌 수 있는, 완전히 재사용 가능한 캐싱 함수를 반환하며 똑같은 인자가 들어오면 똑같은 결과를 반환한다.
+
+#### AOP로 믿음직한 코드 만들기
+
+AOP로 어떻게 믿음직한 코드를 만들까?
+
+첫째, AOP는 함수를 단순하게 유지한다. 함수 각자의 단일 책임을 수행할 뿐이다. 단순함은 곧 믿음성이다.
+
+둘째, AOP는 코드를 DRY하게 해준다. 어떤 코드가 여기저기 출몰하면 나중에 다른 개발자가 잘 못 건드릴 여지가 많다. 그런데 여기서 놓지면 안 될 포인트는, 기존 기능(항공권 발급)에 새 기능(캐싱)을 붙이는 코드를 반복하고 싶지 않다는 점이다.
+
+예제에서 오직 캐싱 애스팩트를 코드에 짜깁기하느라 분주했던 걸 돌이켜 보자. 이런 패턴으로 작업을 진행하면 분명 개발자가 실수할 일이 생긴다. 따라서 테스트 주도 개발 방식을 고려 중이라면 매번 이 부분을 보완할 단위 테스트를 처음부터 새로 다 만들어야 한다. 겉모습이 비슷한 테스트를 여럿 말이다. 이것 역시 또 다른 반복이다.
+
+>> TIP : 어떤 코드 블록을 자체로 반복하지 않는 일만큼 다른 코드와 연결하는 부분을 반복하지 않는 일도 중요하다.
+
+셋째, AOP는 애플리캐이션 설정을 한 곳에 집중시킨다. 애스팩트 설정이 단일 책임인 함수가 하나만 있으면 부속 기능 전체를 찾을 때 이 함수만 뒤지면 된다.
+
+### 2-3-2 사례 연구: Aop.js 모듈 개발
+
+프레드릭 아펠버그와 데이브 클레이턴이 개발한 아주 우아한 프레임워크를 소개하고자 한다. 이름도 단순한 Aop.js 프레임워크는 자바스크립트 기술을 멋지게 축약시킨, 간결함의 미학 그 자체다.
+
+다음 코드르 보자. 이해가 안 되어도 괜찮다. 잠시 후 테스트 주도 개발을 하면서 모두 확실히 이해하게 될 테니까.
+```js
+// 작성자: 프레드릭 아펠버그
+// http://fredrik.appelberg.me/2010/05/07/aop-js.html
+// 프로토타입을 지원할 수 있게 데이브 클레이턴이 수정함
+Aop = {
+  // 주어진 이름공간에 매칭되는 모든 함수 주변(arouond)에 어드바이스를 적용한다.
+  around: function(pointcut, advice, namespaces) {
+    // 이름공간이 없으면 전역 이름공간을 찾아내는 꼼수를 쓴다.
+    if(namespces == undefined || namespaces.length == 0)
+      namespaces = [(function() {return this;}).call()];
+    // 이름공간을 전부 순회한다.
+    for (var i in namespaces){
+      var ns  = namespaces[i];
+      for(var member in ns){
+        if(typeof ns[member] == 'function' && member.match(pointcut)){
+          (function(fn, fnName, ns){
+            // member fn 슬롯을 'advice' 함수를 호출하는 래퍼로 교체한다.
+            ns[fnName] = function() {
+              return advice.call(this, {
+                fn: fn,
+                fnName: fnName,
+                arguments: arguments
+              });
+            };
+          })(ns[member], member, ns);
+        }
+      }
+    }
+  },
+  next: function(f) {
+    return f.fn.apply(this, f.arguements);
+  }
+};
+
+Aop.before = function(pointcut, advice, namespaces) {
+  Aop.around(pointcut,
+              function(f){
+                advice.apply(this, f.arguments);
+                return Aop.next.call(this, f);
+              },
+              namespaces);
+};
+
+Aop.after = function(pointcut, advice, namespaces) {
+  Aop.around(pointcut,
+            function(f) {
+              var ret = Aop.next.call(this, f);
+              advice.apply(this, f.arguments);
+              return ret;
+            },
+            namespaces);
+};
+```
+
+다음 예제를 진행하면서 Aop.js 같은 진주를 탄생 시킨 자바스크립트만의 특성을 깨우쳐 보자.
+
+AOP의 핵심은 함수 실행(타깃)을 가로채어 다른 함수(어드바이스)를 실행하기 직전이나 직후, 또는 전후에 실행시키는 것이다. 직전과 직후는 전후(surround) 케이스에 포함되므로 이 한 가지만 살펴보면 된다.
+
+Aop 객체로 around 함수를 생성한다. 항상 그렇듯이 빈 함수에 시작한다.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    // 처음 버전이라 하는 일이 없다.
+  }
+};
+```
+
+첫 번째 테스트는 Aop.around가 원본 함수를 어드바이스로 대체하는지 확인한다.
+
+```js
+describe('Aop', function() {
+  describe('Aop.around(fnName, advice, targetObj)', function() {
+    it('타깃 함수를 호출 시 어드바이스를 실행하도록 한다', function() {
+      var targetObj = {
+        targetFn: function () {
+        }
+      };
+      var executedAdvice = false;
+      var advice = function() {
+        executedAdvice = true;
+      };
+      Aop.around('targetFn', advice, targetObj);
+      targetObj.targetFn();
+      expect(executedAdvice).toBe(true);
+    });
+  });
+});
+```
+
+타깃 객체 targetObj를 생성했고, 이 객체에는 빈 함수 targetFn이 있다. 또 advice 함수를 실행하면 executedAdvice 플래그 값이 바꾸니다. Aop.around('targetFn', advice, targetObj)로 묶어 타깃을 호출하면 어드바이스가 실행될 것이다. 물론 지금은 Aop.around에 아무것도 없으니 테스트는 실패한다.
+
+테스트를 성공시킬 만큼만 코딩하자.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj){
+    fnObj[fnName] = advice;
+  }
+};
+```
+
+다음은 타겟 호출을 어드바이스로 감싸는 일이다. 일부 타겟 정보를 어드바이스에 전달해야하는데, 내부에 원본 타겟 함수를 저장한 객체를 만들어 어드바이스에 넘기면 된다. 이 객체가 targetInfo고 원본 타겟 함수는 fn 프로퍼티에 넣는다.
+
+```js
+escribe('Aop', function() {
+  var targetObj,
+      executionPoints;  // 실행 이벤트가 담긴 배열
+
+  beforeEach(function() {
+    targetObj = {
+      targetFn: function() {
+        executionPoints.push('targetFn');
+      }
+    };
+    executionPoints = [];
+  });
+
+  describe('Aop.around(fnName, advice, targetObj)', function() {
+
+    it('타깃 함수를 호출 시 어드바이스를 실행하도록 한다', function() {
+      // ... 이전 예제와 같음 ...
+    });
+
+    it('어드바이스가 타깃 호출을 래핑한다', function() {
+      var wrappingAdvice = function(targetInfo) {
+        executionPoints.push('wrappingAdvice - 처음');
+        targetInfo.fn();
+        executionPoints.push('wrappingAdvice - 끝');
+      };
+      Aop.around('targetFn', wrappingAdvice, targetObj);
+      targetObj.targetFn();
+      expect(executionPoints).toEqual(
+        ['wrappingAdvice - 처음','targetFn','wrappingAdvice - 끝']);
+    });
+  });
+});
+```
+
+타겟 객체는 외부 describe 스코프에 있어야 모든 테스트가 참조할 수 있다. 테스트가 끝나면 타겟이 수정되므로 각 테스트 실행 전에 beforeEach에서 타겟을 다시 초기화한다.
+
+현재 구현된 Aop.around는 fn 프로퍼티를 지닌 객체를 제공하는 로직이 없다. 따라서 테스트는 실패한다. 기능을 새로 구현하자.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    var originalFn = fnObj[fnName];
+    fnObj[fnName] = function () {
+      var targetContext = {}; // 잘못된 코드라는 건 알고 있다, 나중에 다시 설명한다.
+      advice.call(targetContext, {fn:originalFn});
+    };
+  }
+};
+```
+
+여기서 두 가지를 주목하자.
+
+첫째, call 메서드다. 이 메서드는 두 번째 이후 파라미터(예제에서는 {fn: originalFn} 하나밖에 없지만, 더 나열할 수 있다)를 인자로 넘겨 함수(advice)를 호출한다. 첫 번째 파라미터는 함수를 호출한 지점의 콘텍스트("this")다. 콘텍스트가 주인공인 테스트는 아직 없으니까 일단 빈 객체로 대체하자.
+
+둘째, 원본 함수를 originalFn 변수로 포착한 부분이다. 이 변숫값은 Aop.around를 호출하면 정해진다. Aop.around 반환 이후에도 이 값이 fnObj[fnName]에서 살아남아 다시 쓸 수 있다는 점이 기묘하다. 바로 **클로저**가 있기에 가능한 일이다.
+
+>> TIP : 머릿속 어휘가 한정된 상태에서 코딩하면 코드가 늘어지기 마련이다. 긴 코드는 에러가 나기 쉽다. 올바르고 멋있는 코드를 짜고 싶으면 프로그래밍 언어의 구석구석을 다 알아야 한다.
+
+타겟을 Aop.around로 겹겹이 감싸면 당연히 되겠거니 생각하겠지만, 진지한 TDD 개발자는 매사 확실히 하므로 테스트를 하나 더 만들어 넣는다. 비슷한 애스팩트를 두 개 만들지 않고 이들을 찍어내는 팩토리를 두는 것이다. 이런 DRY 요소가 개발자의 일정을 하루 더 당겨줄 수 있다.
+
+```js
+it('마지막 어드바이스가 기존의 어드바이스들에 대해 실행되는 방식으로 체이닝이 가능하다', function() {
+    var adviceFactory = function(adviceID) {
+      return (function(targetInfo) {
+        executionPoints.push('wrappingAdvice - 처음 '+adviceID);
+        targetInfo.fn();
+        executionPoints.push('wrappingAdvice - 끝 '+adviceID);
+      });
+    };
+    Aop.around('targetFn',adviceFactory('안쪽'),targetObj);
+    Aop.around('targetFn',adviceFactory('바깥쪽'),targetObj);
+    targetObj.targetFn();
+    expect(executionPoints).toEqual([
+      'wrappingAdvice - 처음 바깥쪽',
+      'wrappingAdvice - 처음 안쪽',
+      'targetFn',
+      'wrappingAdvice - 끝 안쪽',
+      'wrappingAdvice - 끝 바깥쪽']);
+  });
+});
+```
+
+테스트는 성공한다.
+
+다음은 타켓에 인자를 넘기는 부분을 구현한다. 어드바이스는 아직 인자에 대해서는 아무것도 모른다. 어드바이스에 인자를 넘겨줘야 어드바이스도 계속 인자를 전달할 수 있다. 어드바이스가 포착한 targetInfo 객체에 args 프로퍼티를 간단히 하나 더 추가하면 된다.
+
+```js
+{ fn: fntargetFunction, args: argumentsToPassToTarget}
+```
+
+targetInfo.fn() 대신에 조금 전 배운 apply 함수로 인자 배열을 넘겨 호출한다.
+
+```js
+targetInfo.fnapply(this, targetInfo.args);
+```
+
+새 어드바이스 argPassingAdvice는 다음과 같이 코딩했다. targetObj는 argsToTarget 배열에 건네 받은 인자를 보관하도록 개선했다.
+
+```js
+describe('Aop', function() {
+  var argPassingAdvice, // 타깃에 인자를 전달할 어드바이스
+      argsToTarget;     // targetObj.targetFn에 전달할 인자들
+  // 다른 변수 줄임
+
+  beforeEach(function() {
+    targetObj = {
+      targetFn: function() {
+        executionPoints.push('targetFn');
+        argsToTarget = Array.prototype.slice.call(arguments,0);
+      }
+    };
+
+    executionPoints = [];
+
+    argPassingAdvice = function(targetInfo) {
+      targetInfo.fn.apply(this, targetInfo.args);
+    };
+
+    argsToTarget = [];
+  });
+
+  describe('Aop.around(fnName, advice, targetObj)', function() {
+    it('어드바이스에서 타깃으로 일반 인자를 넘길 수 있다', function() {
+      Aop.around('targetFn', argPassingAdvice, targetObj);
+      targetObj.targetFn('a','b');
+      expect(argsToTarget).toEqual(['a','b']);
+    });
+  });
+});
+ ```
+
+테스트 결과는 실패다.
+
+어드바이스에 전달된 객체에 args: arguments를 보태자.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    var originalFn = fnObj[fnName];
+    fnObj[fnName] = function () {
+      var targetContext = {}; // 잘못된 코드라는 건 알고 있다, 나중에 다시 설명한다.
+      advice.call(targetContext,{fn:originalFn, args:arguments});
+    };
+  }
+};
+```
+
+기성 개발자들은 전 기능을 아우르는 테스트를 떠올릴지 모른다. 여기서는 달랑 코드 한 줄에서 사용한, 한 객체의 한 프로퍼티만 처리하는 테스트를 썼고, 더구나 테스트를 작성하기 전, 코드는 아예 한 조각도 나오지 않았다. 테스트 주도 개발의 이상적인 형태란 바로 이런 것이다.
+
+그럼 타켓 함수엔 뭐가 들어갈까? 이 함수에서 나온 반환값은? 어드바이스가 이 값을 도로 밖에 내놓아야 옳다.
+
+targetObj.targetFn에 return 문을 넣으면 된다. argPassingAdvice가 타겟 호출 결과 받아온 값을 다시 반환하게 할 수도 있다. 수정 후 테스트를 해보자.
+
+```js
+describe('Aop', function() {
+  var targetFnReturn = 123,
+  // 다른 변수 생략
+
+  beforeEach(function() {
+    targetObj = {
+      targetFn: function() {
+        executionPoints.push('targetFn');
+        argsToTarget = Array.prototype.slice.call(arguments,0);
+        return targetFnReturn;
+      }
+    };
+
+    executionPoints = [];
+
+    argPassingAdvice = function(targetInfo) {
+      return targetInfo.fn.apply(this, targetInfo.args);
+    };
+
+    argsToTarget = [];
+  });
+
+    it("타깃의 반환값도 어드바이스에서 참조할 수 있다", function() {
+      Aop.around('targetFn', argPassingAdvice, targetObj);
+      var returnedValue = targetObj.targetFn();
+      expect(returnedValue).toBe(targetFnReturn);
+    });
+  });
+});
+```
+```js
+// Expected undefined to be 123
+```
+
+그런데 또 실패한다.
+
+Aop.around에 return 키워드를 넣어보자.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    var originalFn = fnObj[fnName];
+    fnObj[fnName] = function () {
+      var targetContext = {}; // 잘못된 코드라는 건 알고 있다, 나중에 다시 설명한다.
+      return advice.call(targetContext, {fn:originalFn, args:arguments});
+    };
+  }
+};
+```
+
+이제 타겟을 감싸서 원하는 인자를 받고 그 반환값을 가져올 수 있게 됐다.
+
+한 가지만 더 고민하자. 자바스크립트는 예기치 않은 콘텍스트에서 함수를 실행하게 될 가능성이 매우 큰 언어이다.
+
+>> TIP: 자바스크립트 함수는 자신의 고향 집이 아닌 객체에서 얼마든지 실행될 수 있어서 경우에 따라 콘텍스트가 정확한지 반드시 테스트해야 한다.
+
+콘텍스트까지 고려한 테스트를 작성하자
+
+```js
+it('타깃 함수를 해당 객체의 콘텍스트에서 실행한다', function() {
+  var Target = function() {
+    var self = this;
+    this.targetFn = function() {
+      expect(this).toBe(self);
+    };
+  };
+  var targetInstance = new Target();
+  var spyOnInstance = spyOn(targetInstance,'targetFn').and.callThrough();
+  Aop.around('targetFn',argPassingAdvice,targetInstance);
+  targetInstance.targetFn();
+  expect(spyOnInstance).toHaveBeenCalled();
+});
+
+it('어드바이스를 타깃의 콘텍스트에서 실행한다', function() {
+  var advice = function() {
+    expect(this).toBe(targetObj);
+  };
+  Aop.around('targetFn',advice,targetObj);
+  targetObj.targetFn();
+});
+```
+
+우선 Target을 new로 생성할 때 당시의 this의 값을 확인하는 기대식을 타겟 함수에 넣었다. 하지만 호출 자체가 실패하면 expect(this).toBe(self)까지 가지도 못하게 된다. 이 점을 보완하려면 함수가 호출되었음을 확인하는 기대식으로 결론을 내려야 한다.
+
+두 번째 테스트도 비슷하지만, 재스민이 에러를 보고한다. 빈 객체로 지정했던 기존 targetContext를 this로 바꾸면 바로 해결 된다.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    var originalFn = fnObj[fnName];
+    fnObj[fnName] = function () {
+      return advice.call(this, {fn:originalFn, args:arguments});
+    };
+  }
+};
+```
+
+테스트는 성공이다.
+
+이 전에 체인의 다음 어드바이스(더는 어드바이스가 없다면 decorated function)를 호출하려면 다음 코드처럼 할 수박에 없었다.
+
+```js
+targetInfo.fn.apply(this, targetInfo.args);
+```
+
+하지만 최선은 아니다. targetInfo의 구조를 Aop 사용자에게 보여주는 꼴이다. 함수 안에 캡슐화하는 편이 낫지 않을까? 프레드릭과 데이브는 도우미 함수 Aop.next를 만들어 체인의 다음 애스팩트/타겟을 호출할 수 있게 만들었다.
+
+주석 라인을 보면 개발 진행 흔적을 엿볼 수 있다.
+
+```js
+Aop = {
+  around: function(fnName, advice, fnObj) {
+    var originalFn = fnObj[fnName];
+    fnObj[fnName] = function () {
+      return advice.call(this, {fn:originalFn, args:arguments});
+    };
+  },
+
+  next: function(targetInfo) {
+  //이 함수는 다음과 같은 단계를 밟아 하나하나 테스트를 하며 작성했다.
+  //      targetInfo.fn();
+  //      targetInfo.fn.apply({}, targetInfo.args);
+  // return targetInfo.fn.apply({}, targetInfo.args);
+    return targetInfo.fn.apply(this,targetInfo.args);
+  }
+};
+```
+
+```js
+describe('Aop', function() {
+  var Target = function() {
+        var self = this;
+        this.targetFn = function() {
+          expect(this).toBe(self);
+        };
+      };
+
+  // 이전 예제와 같은 코드 줄임
+
+  describe('Aop.next(context,targetInfo)', function() {
+    var advice = function(targetInfo) {
+      return Aop.next.call(this,targetInfo);
+    };
+    var originalFn;
+    beforeEach(function() {
+      originalFn = targetObj.targetFn;
+      Aop.around('targetFn',advice, targetObj);
+    });
+    it('targetInfo.fn에 있는 함수를 호출한다', function() {
+      targetObj.targetFn();
+      expect(executionPoints).toEqual(['targetFn']);
+    });
+    it('targetInfo.args에 인자를 전달한다', function() {
+      targetObj.targetFn('a','b');
+      expect(argsToTarget).toEqual(['a','b']);
+    });
+    it("targetInfo 함수에서 받은 값을 반환한다", function() {
+      var ret = targetObj.targetFn();
+      expect(ret).toEqual(targetFnReturn);
+    });
+    it('주어진 콘텍스트에서 타깃 함수를 실행한다', function() {
+      var targetInstance = new Target();
+      var spyOnInstance = spyOn(targetInstance,'targetFn').and.callThrough();
+      Aop.around('targetFn',advice,targetInstance);
+      targetInstance.targetFn();
+      expect(spyOnInstance).toHaveBeenCalled();
+    });
+  });
+});
+```
+
+테스트는 성공이고 마침내 완벽한 서비스를 자랑하는 AOP 컴포넌트가 만들어졌다.
+
+다시 원저작자의 Aop.js를 살펴보자. Aop.around 호출로 여러 함수에 영향을 준다. 원저작자는 Aop.around 인자명을 다르게 붙여놓았다.
+
+```js
+Aop.around(pointcut, advice, namespaces)
+```
+
+여기서 pointcut은 예제의 fnName이다. AOP 용여인 포인트컷은 애스팩트가 끼어들어 어떤 일을 수행하는 지점(포인트)을 말한다. Aop.js는 자바스크립트 정규 표현식으로 포인트컷을 구현했다.
+
+namespace는 fnObj에 해당한다. 자바스크립트 이름공간은 다른 객체를 프로퍼티로 소유한 단순 객체다. 이름이 충돌하는 것을 예방하려면 한 이름공간 안에 모든 애플리케이션을 두는 것이 좋다. 이름공간을 이렇게 계층화 할 수도 있다.
+
+```js
+var MyApp = {};
+
+MyApp.Encryption = {};
+MyApp.WebServices = {};
+MyApp.UI = {};
+```
+
+그리고 이름 공간에 함수를 작성해 놓는다.
+
+```js
+MyApp.WebServices.amazon = function() {
+  //...
+  getIsbn: function(title, author, pubYear){
+    //...
+  }
+};
+```
+
+예제에서 개발한 코드는 애스팩트 하나를 최하위 수준에 있는 함수 하나(예: MyApp.WebServices.amazon.getIsbn)에만 적용할 수 있었다. Aop.js 풀 버전을 쓰면 여러 이름공간에 걸쳐 get으로 시작하는 함수 전체에 적용할 수도 있다.
+
+```js
+Aop.around(/^get/, advice, ["MyApp.Encryption", "MyApp.WebServices"]);
+```
+
+어쨋든 지금까지 테스트 주도 개발 방식으로 Aop.js의 심장부를 작성해봤다.
+
+### 2-3-3 다른 AOP 라이브러리
+
+Aop.js가 맘에 들지만, AspectJS, AopJs 제이쿼리 플러그인, YUI의 Do 클래스 등 다른 라이브러리를 써도 된다.
+
+### 2-3-4 결론
+
+자바스크립트 AOP는 구현하기 쉽지만, 쓸만한 도구는 그리 많지 않다. 덩치 큰 라이브러리 개발은 중단됐으나, 업데이트할 일 거의 없이 최소한의 필수 기능만 구현된 대체 라이브러리가 있다. 이 책은 아픙로 AOP가 필요할 때 Aop.js를 사용할 것이다.
