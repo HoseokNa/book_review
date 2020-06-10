@@ -3,6 +3,8 @@
 * [3-1 원시형](#3-1-원시형)
 * [3-2 객체 리터럴](#3-2-객체-리터럴)
 * [3-3 모듈 패턴](#3-3-모듈-패턴)
+* [3-4 객체 프로토타입과 프로토타입 상속](#3-4-객체-프로토타입과-프로토타입-상속)
+* [3-5 new 객체 생성](#3-5-new-객체-생성)
 
 이 장의 주제
 
@@ -203,3 +205,227 @@ MyApp.WildPreserveSimulator.addAnimal(realAnimalMaker, gorilla, female);
 |인터페이스 분리|결합된 API 모듈 자체가 자바스크립트에서 분리된 인터페이스나 다름없다.|
 |의존성 역전|임의 모듈은 의존성으로 주입하기 쉽다. 모듈이 어떤 형태든 다른 모듈에 주입할 수 있다.|
 |DRY|제대로만 쓴다면 DRY한 코드를 유지하는데 아주 좋은 방법이다.|
+
+## 3-4 객체 프로토타입과 프로토타입 상속
+
+자바스크립트 객체는 생성 메커니즘과 무관하게 프로토타입 객체로 연결되어 프로퍼티를 상속한다.
+
+### 3-4-1 기본 객체 프로토타입
+
+앞 절의 객체 리터럴은 저절로 내장 객체 Object.prototype에 연결 된다.
+
+```js
+var chimp = {
+  hasTumbs: true,
+  swing: function() {
+    return '나무 꼭대기에 대롱대롱 매달림';
+  }
+};
+
+chimp.toString(); // [object Object]
+```
+
+toString() 실행 시 undefined 함수 에러가 발생하지 않음. toString 함수가 없다는 사실을 알고 chimp의 프로토타입인 Object.protorype에 정의된 toString을 실행
+
+### 3-4-2 프로토타입 상속
+
+자바스크립트의 프로토타입 상속은 기본 프로토타입을 맞춤형 프로토 타입으로 대체할 때 그 진가가 드러난다.
+
+ECMAScript 5부터 등장한 Object.create 메서드를 사용하면 기존 객체와 프로토타입이 연결된 객체를 새로 만들 수 있다.
+
+```js
+var ape = {
+  hasTumbs: true,
+  hasTail: false,
+  swing : function() {
+    return '메달리기';
+  }
+};
+
+var chimp = Object.create(ape);
+
+var bonobo = Object.create(ape);
+bonobo.habitat = '중앙 아프리카';
+
+console.log(bonobo.habitat); // '중앙 아프리카' (bonobo 프로퍼티)
+console.log(bonobo.hsTail); // false (ape 프로토타입)
+console.log(chimp.swing()); // '매달리기' (ape 프로토타입)
+```
+
+bonobo에 직접 추가한 habitat 프로퍼티는 ape, chimp 그 누구와도 공유하지 않는 고유 프로퍼티다.
+
+ape는 공유 프로퍼티라서 수정하면 chimp와 bonobo 모두에 즉시 영향을 미친다.
+
+```js
+ape.hasTumbs = false;
+console.log(chimp.hasThumbs); // false
+console.log(bonobo.hasThumbs);  // false
+```
+
+### 3-4-3 프로토타입 체인
+
+프로토타입 체인(prototype chain)이라는 다층 프로토타입을 이용하면 여러 계층의 상속을 구현할 수 있다.
+
+```js
+var primate = {
+  stereoscopicVision: true;
+};
+
+var ape = Object.create(primate);
+ape.hasTumbs = true;
+ape.hasTail = false;
+ape.swing = function() {
+  return "매달리기";
+};
+
+var chimp = Object.create(ape);
+
+console.log(chimp.hasTail); // false (ape 프로토타입)
+console.log(chimp.stereoscopicVision);  // true (primate 프로토타입)
+```
+
+자바스크립트 엔진은 객체의 고유 프로퍼티가 없으면 프로토타입 체인을 따라 올라간다. 그래도 발견하지 못하면 undefined를 반환한다.
+
+너무 깊숙이 프로토타입 체인을 찾게 하면 성능상 좋을 게 없으니 너무 깊게 사용하지는 말자.
+
+## 3-5 new 객체 생성
+
+new 객체 생성 패턴과 그 장점 및 유의 사항을 살펴보자.
+
+### 3-5-1 new 객체 생성 패턴
+
+객체를 new로 생성하는 구문 패턴은 C#, C++, 자바 등과 비슷하다.
+
+다음 예제의 Marsupial 함수는 new 객체 생성 패턴으로 자신의 객체 인스턴스를 생성한다.
+
+```js
+// marsupial은 유대류 의미(캥거루 코알라 등)
+function Marsupial(name, nocturnal) {
+  this.name = name;
+  this.isNocturnal = nocturnal;
+}
+
+var maverick = new Marsupial('매버릭', true);
+var slider = new Marsupial('슬라이더', false);
+
+console.log(maverick.isNocturnal); // true
+console.log(maverick.name);        // "매버릭"
+
+console.log(slider.isNocturnal);   // false
+console.log(slider.name);          // "슬라이더"
+```
+
+Marsupial 함수는 주어진 인자를 내부적으로 생서할 인스턴스의 프로퍼티에 할당한다.
+
+#### '나쁜 일'이 벌어질 가능성
+
+자바스크립트 언어는 Marsupial 함수를 **생성자 함수**(new 키워드와 함께 사용하려고 작성한 함수)로 사용하라고 강요하지 않는다.
+
+더글라스 크락포트 같은 사람은 생성자 함수 호출 시 new를 빠뜨리면 '나쁜 일'이 생길 수 있으니 아예 생성자 함수를 쓰지 말라고 권한다.
+
+하지만 생성자 함수는 초기화 코드를 공유할 때 유용하고 new가 꼭 필요하다면 체크할 방법이 없는 것도 아니니 섣불리 생성자 함수에 퇴장을 명하고 싶지 않다.
+
+#### new를 사용하도록 강제
+
+instanceof 연산자를 통해 우회적으로 강제하는 방법이 있다.
+
+```js
+function Marsupial(name, nocturnal) {
+  if (!(this instanceof Marsupial)) {
+    throw new Error("이 객체는 new를 사용하여 생성해야 합니다");
+  }
+  this.name = name;
+  this.isNocturnal = nocturnal;
+}
+
+var slider = Marsupial('슬라이더', true); // Uncaught Error: 이 객체는 new를 사용하여 생성해야 합니다
+```
+
+>> NOTE: instanceof의 작동 원리는 이렇다. 우변 피연산자의 프로토타입이 좌변 피연산자의 프로토타입 체인에 있는지 찾아본다. 만약 있으면 좌변 피연산자가 우변 피연자의 인스턴스라고 결론 내린다. new 키워드를 앞에 붙여 생성자 함수를 실행하면 일단 빈 객체를 하나 만들어 새 객체의 프로토타입을 생성자 함수의 프로토타입 프로퍼티에 연결한다. 그런 다음 생성자 함수를 this로 실행하여 새 객체를 찍어낸다.
+
+에러를 내지 않고 자동으로 new를 붙여 인스턴스를 만들어 반환하게 할 수도 있다.
+
+```js
+function Marsupial(name, nocturnal) {
+  if (!(this instanceof Marsupial)) {
+    return new Marsupial(name, nocturnal);
+  }
+  this.name = name;
+  this.isNocturnal = nocturnal;
+}
+
+var slider = Marsupial('슬라이더', true);
+
+console.log(slider.name);  // '슬라이더'
+```
+
+이렇게 처리하면 개발자는 Marsupial 함수 호출부에서 new를 신경 쓸 이유가 없다.
+
+그러나 얼핏 편리해 보이지만 사실 개발자의 실수를 모면하게 해줄 뿐이다.
+
+일관성은 곧 믿음성이라 생각하는 우리는 new가 빠졌을 때 예외가 발생하면 Marsupial 객체 인스턴스가 모두 같은 방식으로 생성되었다고 확신할 수 있다. 결국 보다 일관적이고 분명한 코드베이스를 구축할 수 있다. 또한, 테스트 주도 개발과 접목해 new가 빠져 발생한 예외를 빠짐없이 곧바로 알아볼 수 있는 이점도 있다.
+
+new 객체 생성 패턴을 이용하면 정의부 하나로 여러 인스턴스가 함께 사용할 함수 프로퍼티를 생성할 수 있다. 각 인스턴스는 자신만의 고유한 함수를 가진다.
+
+```js
+function Marsupial(name, nocturnal) {
+  if (!(this instanceof Marsupial)) {
+    throw new Error("이 객체는 new를 사용하여 생성해야 합니다");
+  }
+  this.name = name;
+  this.isNocturnal = nocturnal;
+
+  // 각 객체 인스턴스는 자신만의 isAwake 사본을 가진다
+  this.isAwake = function(isNight) {
+    return isNight === this.isNocturnal;
+  }
+}
+
+var maverick = new Marsupial('매버릭', true);
+var slider = new Marsupial('슬라이더', false);
+
+var isNightTime = true;
+
+console.log(maverick.isAwake(isNightTime));      // true
+console.log(slider.isAwake(isNightTime));         // false
+
+// 각 객체는 자신의 isAwake 함수를 가진다
+console.log(maverick.isAwake === slider.isAwake); // false
+```
+
+함수 프로퍼티를 생성자 함수의 프로토타입에 붙일 수도 있다. 생성자 함수의 프로토타입에 함수를 정의하면 객체 인스턴스를 대량 생성할 때 함수 사본 개수를 한 개로 제한하여 메모리 점유율을 낮추고 성능까지 높이는 추가 이점이 있다.
+
+```js
+function Marsupial(name, nocturnal) {
+  if (!(this instanceof Marsupial)) {
+    throw new Error("이 객체는 new를 사용하여 생성해야 합니다");
+  }
+  this.name = name;
+  this.isNocturnal = nocturnal;
+}
+// 각 객체 인스턴스는 자신만의 isAwake 사본을 가진다
+Marsupial.prototype.isAwake = function(isNight) {
+  return isNight === this.isNocturnal;
+}
+var maverick = new Marsupial('매버릭', true);
+var slider = new Marsupial('슬라이더', false);
+
+var isNightTime = true;
+
+console.log(maverick.isAwake(isNightTime));       // true
+console.log(slider.isAwake(isNightTime));         // false
+
+// 객체들은 isAwake의 단일 인스턴스를 공유한다
+console.log(maverick.isAwake === slider.isAwake); // true
+```
+
+#### new 생성 객체의 SOLID/DRY 요약표
+
+| 원칙 | 결과 |
+|-|-|
+|단일 책임|가능. 하지만 생성한 객체가 반드시 한 가지 일에만 전념토록 해야 한다. 생성자 함수에 의존성을 주입할 수 있다는 점에서 도움이 될 것이다.|
+|개방/폐쇄|그렇다. 다음 절에서 상속을 다룰 때 new로 생성한 객체를 어떻게 확장할 수 있는지 알게 됨.|
+|리스코프 치환|상속을 잘 이용하면 가능.|
+|인터페이스 분리|상속과 다른 공유 패턴을 이용하면 가능.|
+|의존성 역전|의존성은 어렵지 않게 생성자 함수에 주입할 수 있다.|
+|DRY|new 객체 생성 패턴을 쓰면 아주 DRY한 코드가 된다. 다만, AOP를 이 패턴과 함께 잘 써먹을 방법이 떠오르지 않아 안타깝다. new는 생성할 객체의 프로토타입을 상속한 객체를 생성하므로 AOP와 new는 친구가 되기 어렵다. 이 객체를 애스팩트로 래핑하면 하댕 객체의 프로토타입이 아닌 애스팩트의 프로토타입을 사용하게 될 것이다. 그러나 new로 만든 객체의 프로토타입에 있는 함수를 AOP로 장식하는 건 얼마든지 가능.|
