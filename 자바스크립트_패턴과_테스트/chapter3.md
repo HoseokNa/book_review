@@ -5,6 +5,8 @@
 * [3-3 모듈 패턴](#3-3-모듈-패턴)
 * [3-4 객체 프로토타입과 프로토타입 상속](#3-4-객체-프로토타입과-프로토타입-상속)
 * [3-5 new 객체 생성](#3-5-new-객체-생성)
+* [3-6 클래스 상속](#3-6-클래스-상속)
+* [3-7 함수형 상속](#3-7-함수형-상속)
 
 이 장의 주제
 
@@ -429,3 +431,126 @@ console.log(maverick.isAwake === slider.isAwake); // true
 |인터페이스 분리|상속과 다른 공유 패턴을 이용하면 가능.|
 |의존성 역전|의존성은 어렵지 않게 생성자 함수에 주입할 수 있다.|
 |DRY|new 객체 생성 패턴을 쓰면 아주 DRY한 코드가 된다. 다만, AOP를 이 패턴과 함께 잘 써먹을 방법이 떠오르지 않아 안타깝다. new는 생성할 객체의 프로토타입을 상속한 객체를 생성하므로 AOP와 new는 친구가 되기 어렵다. 이 객체를 애스팩트로 래핑하면 하댕 객체의 프로토타입이 아닌 애스팩트의 프로토타입을 사용하게 될 것이다. 그러나 new로 만든 객체의 프로토타입에 있는 함수를 AOP로 장식하는 건 얼마든지 가능.|
+
+## 3-6 클래스 상속
+
+프로토타입 상속으로 어느 정도 흉내를 낼 수는 있다.
+
+### 3-6-1 고전적 상속 흉내 내기
+
+앞 절의 Marsupial 함수를 확장해 캥거루에 hop 함수라는 특정 프로퍼티를 넣는다고 하자.
+
+Marsupial 함수 프로토타입에 hop 함수를 추가할 수 있지만, 그렇게 되면 Marsupial 생성자 함수로 만든 객체 인스턴스는 모두 hop 함수를 갖게 된다.
+
+최선의 미더운 해결책은 Marsupial을 상속한 Kangaroo 함수를 생성한 뒤 확장하는 것이다.
+
+```js
+function Marsupial(name, nocturnal) {
+  if (!(this instanceof Marsupial)) {
+    throw new Error("이 객체는 new를 사용하여 생성해야 합니다");
+  }
+  this.name = name;
+  this.isNocturnal = nocturnal;
+}
+Marsupial.prototype.isAwake = function(isNight) {
+  return isNight == this.isNocturnal;
+};
+
+function Kangaroo(name) {
+  if (!(this instanceof Kangaroo)) {
+    throw new Error("이 객체는 new를 사용하여 생성해야 합니다");
+  }
+  this.name = name;
+  this.isNocturnal = false;
+}
+
+Kangaroo.prototype = new Marsupial();
+Kangaroo.prototype.hop = function() {
+  return this.name + "가 껑충 뛰었어요!";
+};
+var jester = new Kangaroo('제스터');
+console.log(jester.name);
+
+var isNightTime = false;
+console.log(jester.isAwake(isNightTime)); // true
+console.log(jester.hop());  // '제스터가 껑충 뛰었어요!'
+
+console.log(jester instanceof Kangaroo);  // true
+console.log(jester instanceof Marsupial); // true
+```
+
+결론적으로 Kangaroo의 프로토타입이 된 Marsupial 인스턴스에 hop 함수를 추가하여 확장할 수 있게 됐다. hop 함수는 Marsupial 생성자 함수는 물론 Marsupial 생성자 함수는 물론 Marsupial 생성자 함수의 프로토타입 어느 쪽에도 추가되지 않는다. 개방/폐쇄 원칙을 제대로 실천한 사례다.
+
+### 3-6-2 반복이 캥거루 잡네
+
+고전적 상송을 흉내 내면 코드 반복과 메모리 점유는 피하기 어렵다.
+
+```js
+Kangaroo.prototype = new Marsupial();
+```
+
+Marsupial 생성자 함수에 인자가 하나도 없다. 프로토타입 지정 시 인자를 알 수 없으므로 Marsupial 함수의 프로퍼티 할당 작업은 Kangaroo 함수에서도 되풀이된다.
+
+명백한 DRY 원칙 위반이다. 불필요한 반복은 부실한 코드를 양산한다.
+
+또한, Kangaroo 프로토타입(isNocturnal: false, name: "Jester")과 Kangaroo 인스턴스(isNocturnal: undefined, name: undefined) 자신까지 프로퍼티를 들고 다니는 꼴이 된다.
+
+| 원칙 | 결과 |
+|-|-|
+|단일 책임|단일 책임 원칙을 지원하지만 강제하지는 못한다. 의존성을 주입하면 여러 책임을 객체들에 전가하지 않게끔 할 수 있다. new 키워드를 사용하면 생성자 함수를 애스팩트로 장식할 수 없다.|
+|개방/폐쇄|이 패턴의 주제가 바로 개방/폐쇄 원칙이다.|
+|리스코프 치환|의존성을 수정하는게 아니라 확장하려는 것이다. 따라서 원칙에 충실하다.|
+|인터페이스 분리|해당 없음.|
+|의존성 역전|상속하는 객체의 생성자 함수에 의존성을 주입하는 형태로 실현.|
+|DRY|그다지 관련이 없다. 초기화 로직이 상속을 주고받는 객체 모두의 생성 함수에 걸쳐 반복된다. 하지만 프로토타입을 공유하면 함수 사본 개수를 줄일 수 있다.|
+
+## 3-7 함수형 상속
+
+함수형 상속을 하면 데이터를 숨긴 채 접근을 다스릴 수 있다. 이렇게 할 수만 있다면 퍼블릭/프라이빗 데이터 모두 실수와 오용에 노출된 빈도가 줄어들어 믿음성이 커진다.
+
+marsupial을 상속한 이후 hop 함수를 추가한 kangaroo 객체를 만드는 일이 관건인데, 함수형 상속 패턴과 모듈을 이용하여 구현해보자.
+
+```js
+var AnimalKingdom = AnimalKingdom || {};
+
+AnimalKingdom.marsupial = function(name, nocturnal) {
+
+  var instanceName = name,
+      instanceIsNocturnal = nocturnal;
+
+  return {
+    getName: function() {
+      return instanceName;
+    },
+    getIsNocturnal: function() {
+      return instanceIsNocturnal;
+    }
+  };
+};
+
+AnimalKingdom.kangaroo = function(name) {
+  var baseMarsupial = AnimalKingdom.marsupial(name, false);
+
+  baseMarsupial.hop = function() {
+    return baseMarsupial.getName() + '가 껑충 뛰었어요';
+  };
+
+  return baseMarsupial;
+};
+
+var jester = AnimalKingdom.kangaroo('제스터');
+console.log(jester.getName());         // '제스터'
+console.log(jester.getIsNocturnal());  // false
+console.log(jester.hop());             // '제스터가 껑충 뛰었어요!'
+```
+
+AnimalKingdom.kangaroo 함수는 baseMarsupial 인스턴스를 확장해 hop 함수를 추가한다. 이 과정에서 AnimalKingdom.marsupial은 전혀 달라진 게 없다. 개방/폐쇄 원칙이 충실히 반영된 결과다.
+
+| 원칙 | 결과 |
+|-|-|
+|단일 책임|함수형 상속은 모듈 패턴을 사용하므로 의존성 주입과 애스팩트 장식에 친화적이다. 상속한 모듈에는 반드시 한 가지 책임만 부여해야 한다.|
+|개방/폐쇄|함수형 상속은 모듈 확장에 관한 한 완벽한 메커니즘이다.(따라서 모듈을 수정하지 않아도 된다.)|
+|리스코프 치환|함수형 상속은 수정 없이 모듈을 확장할 수 있게 해주므로 상속받은 모듈은 자신이 상속한 모듈로 대체될 수 있다.|
+|인터페이스 분리|다시 말하지만, 함수형 상속은 모듈 패턴의 변형이다. 응집된 모듈 API 자체가 분리된 인터페이스다.|
+|의존성 역전|임의 모듈 생성 방식으로 만든 모듈을 상속에 사용했다면 의존성은 쉽게 주입할 수 있다.|
+|DRY|설계만 잘한다면 모듈을 이용한 함수형 상속은 DRY한 코드로 향하는 이상적인 지름길이다.|
