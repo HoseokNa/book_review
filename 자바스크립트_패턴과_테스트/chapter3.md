@@ -7,6 +7,8 @@
 * [3-5 new 객체 생성](#3-5-new-객체-생성)
 * [3-6 클래스 상속](#3-6-클래스-상속)
 * [3-7 함수형 상속](#3-7-함수형-상속)
+* [3-8 멍키 패칭](#3-8-멍키-패칭)
+* [3-9 정리하기](#3-9-정리하기)
 
 이 장의 주제
 
@@ -554,3 +556,110 @@ AnimalKingdom.kangaroo 함수는 baseMarsupial 인스턴스를 확장해 hop 함
 |인터페이스 분리|다시 말하지만, 함수형 상속은 모듈 패턴의 변형이다. 응집된 모듈 API 자체가 분리된 인터페이스다.|
 |의존성 역전|임의 모듈 생성 방식으로 만든 모듈을 상속에 사용했다면 의존성은 쉽게 주입할 수 있다.|
 |DRY|설계만 잘한다면 모듈을 이용한 함수형 상속은 DRY한 코드로 향하는 이상적인 지름길이다.|
+
+## 3-8 멍키 패칭
+
+멍키 패칭은 추가 프로퍼티를 객체에 붙이는 것이다. 다른 객체의 함수를 붙여 객체의 덩치를 불리은 일은 자바스크립트 언어가 제격이다.
+
+```js
+var MyApp = MyApp || {};
+
+MyApp.Hand = function() {
+  this.dataAboutHand = {}; // etc.
+};
+MyApp.Hand.prototype.arrangeAndMove = function(sign) {
+  this.dataAboutHand = '새로운 수화 동작';
+};
+
+MyApp.Human = function(handFactory) {
+  this.hands = [handFactory(), handFactory()];
+};
+MyApp.Human.prototype.useSignLanguage = function(message) {
+  var sign = {};
+  // 메시지를 sign에 인코딩한다.
+  this.hands.forEach(function(hand) {
+    hand.arrangeAndMove(sign);
+  });
+  return '손을 움직여 수화하고 있어, 무슨 말인지 알겠니?';
+};
+
+MyApp.Gorilla = function(handFactory) {
+  this.hands = [handFactory(), handFactory()];
+};
+
+MyApp.TeachSignLanguageTokoko = (function() {
+  var handFactory = function() {
+    return new MyApp.Hand();
+  }
+  // (빈자의 의존성 주입)
+  var trainer = new MyApp.Human(handFactory);
+  var koko = new MyApp.Gorilla(handFactory);
+
+  koko.useSignLanguage = trainer.useSignLanguage;
+
+  // 실행 결과: '손을 움직여 수화하고 있어. 무슨 말인지 알겠니?';
+  console.log(koko.useSignLanguage('Hello!'));
+}());
+```
+
+다음 줄 끝에서 멍키 패칭이 일어난다.
+
+```js
+kokouseSignLanguage = trainer.useSignLanguage;
+```
+
+조련사(trainer)의 수화(sign language) 능력을 코코(Koko)에게 패치한다. 코코에게 손(hands)이 있기에 가능한 일이다.(Human.useSignLanguage 함수의 this에 있어야 할, 즉 useSignLanguage 앞에 점(.)을 붙여 연결할 객체의 한 부분인) useSignLanguage는 Human에서 비롯되었지만, 이 함수 앞에 점을 붙여 호출하면(koko.useSignLanguage) 사람이 아닌 코코의 손을 움직인다.
+
+1. koko.useSignLanguage('Hello!')를 호출한다.
+2. 멍키 패칭을 했으니 MyApp.Human.prototype.useSignLanguage가 실행된다.
+3. 이 함수는 this.hands에 접근한다.
+4. 여기서 this는 useSignLanguage를 호출한 객체, 즉 MyApp.Gorilla 객체(koko)다. 따라서 MyApp.Gorilla 객체도 비로수 수화할 수 있는 손을 가지게 된다.
+
+빌린 함수에 다른 요건이 추가될 가능성은 항상 있다. 따라서 패치를 관장하는 **빌려 주는 객체**가 빌리는 객체가 요건을 충족하는지 알아보게 하는 것이 가장 좋은 멍키 패칭 방법이다.
+
+```js
+MyApp.Humand.prororype.endowSigning = function(receivingObject) {
+  if (typeof receivingObject.getHandCount === 'function'
+  && receivingObject.getHandCount() >= 2) {
+    receivingObject.useSignLanguage = this.useSignLanguage;
+  } else {
+    throw new Error("미안하지만 너에게 수화를 가르쳐줄 수는 없겠어.");
+  }
+};
+```
+
+물론 빌리는 객체는 빌려주는 객체의 질문에 반드시 대답해야 한다.
+
+```js
+MyApp.Gorilla.prototype.getHandCount = function() {
+  return this.hands.length;
+}
+
+// 사람이 고릴라에게 수화 능력을 줌
+trainer.endowSigning(koko);
+```
+
+이런 식으로 한 객체의 기능 전체를 다른 객체로 패치할 수도 있다. 인터페이스뿐만 아니라 코드도 함께 구현한 터라 사실 다중 상속에 더 가깝다.
+
+멍키 패칭은 '메서드 빌림(method borrowing)'이라는 타이틀로 19장에서 더 자세히 설명한다.
+
+| 원칙 | 결과 |
+|-|-|
+|단일 책임|기증받은 기능 다발이 단일 책임으로 이루어진다 해도 빌림 자체로 빌리는 객체에 책임을 전가하는게 아닌가 하는 점에서 놀란의 여지는 있을 수 있다. 하지만 그런식으로 생각하면 애스팩트 역시 책임을 더하는 건 마찬가지라서 어불성설이다.|
+|개방/폐쇄|분별 있게 잘 쓰면 어길 일은 없다.|
+|리스코프 치환|빌린 함수가 새 집과 옛집에서 그 의미가 같다면 문제없다.|
+|인터페이스 분리|멍키 패칭이 추구하는 그 자체.|
+|의존성 역전|의존성은 보통 빌려주는 객체 또는 빌리는 객체 어느 쪽에도 주입될 수 있다.|
+|DRY|DRY한 콛를 유지하는데 도움이 많이 될 것이다.|
+
+## 3-9 정리하기
+
+원시형과 객체 리터럴은 사용하기 쉽지만, 코드 중복이 일어나기 쉽다.
+
+모듈 패턴은 이에 관한 확실한 개선책이다. 데이터 캡슐화와 애스팩트 지향 프로그래밍을 동원하여 확장과 단위 테스트를 매끄럽게 한다.
+
+객체 생성 패턴을 쓰지 말라는 사람도 있다. 그러나 생성자 함수로 초기화 코드를 공유할 수 있고 new를 강제해야 한다면 어렵지 않게 구현할 수 있기 때문에 퇴출 의견에 반대한다.
+
+모든 자바스크립트 함수는 protorype 프로퍼티를 통해 객체 인스턴스 간에 코드와 데이터를 효과적으로 공유할 수 있다. 고전적 상속은 프로토타입 상속으로 흉내를 낼 수 있다. 또한, 프로토타입 상속 과정에서 야기되는 코드 반복을 없애고 데이터를 감출 수 있는 함수형 상속을 지원한다.
+
+멍키 패칭을 잘 활용하면 한 객체의 기능을 다른 객체로 기증할 수 있다.
