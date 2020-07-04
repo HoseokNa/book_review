@@ -5,6 +5,8 @@
 - [4-1 클래스 이론](#4-1-클래스-이론)
 - [4-2 클래스 체계](#4-2-클래스-체계)
 - [4-3 클래스 상속](#4-3-클래스-상속)
+- [4-4 믹스인](#4-4-믹스인)
+- [4-5 정리하기](#4-5-정리하기)
 
 ## 4-1 클래스 이론
 
@@ -146,3 +148,162 @@ Vehicle 클래스를 인스턴스화하여 drive()를 호출했다면 당연히 
 좋아보이지만 복잡한 문제들이 잠재되어 있다. 예를 들어 마름모 문제(Diamond Problem)란 것도 있다.
 
 자바스크립트는 '다중 상속'을 지원하지 않는다.
+
+## 4-4 믹스인
+
+자바스크립트엔 '클래스'란 개념 자체가 없고 오직 객체만 있다. 그리고 객체는 다른 객체에 복사되는 게 아니라 서로 연결된다.(자세한 내용은 5장 프로토타입)
+
+믹스인(Mixin)은 클래스 복사 기능을 흉내 낸 것으로, 명시적 믹스인과 암시적 믹스인 두 타입이 있음.
+
+### 4-4-1 명시적 믹스인
+
+Vehicle/Car 예제를 다시 보자. 자바스크립트 엔진은 Vehicle의 작동을 Car로 알아서 복사하지 않으므로 일일이 수동으로 복사하는 유틸리티를 대신 작성하면 된다.
+
+```js
+// mixin() 예제
+function mixin(sourceObj, targetObj) {
+  for(var key in sourceObj) {
+    if(!key in targetObj)) {
+      targetObj[key] = sourceObj[key];
+    }
+  }
+  return targetObj;
+}
+
+var Vehicle = {
+  engines: 1,
+
+  ignition: function() {
+    console.log("엔진을 켠다.");
+  }
+
+  drive: function() {
+    this.ignition();
+    console.log("방향을 맞추고 앞으로 간다!");
+  }
+};
+
+var Car = mixin(Vehicle, {
+  wheels: 4,
+  drive: function() {
+    Vehicle,drive.call(this);
+    console.log(
+      this.wheels + "개의 바퀴로 굴러간다!"
+    );
+  }
+});
+```
+
+이제 Car에는 Vehicle에서 복사한 프로퍼티와 함수 사본이 있다.(엄밀히 말해 원본 함수를 가리키는 레퍼런스만 복사된 것)
+
+### 다형성 재고
+
+Vehicle.drive.call(this)와 같은 코드를 명시적 의사다형성(Explicit Pseudopolymorphism)이라 부른다.
+
+자바스크립트는 (ES6 이전엔) 상대적 다형성을 제공하지 않는다. 따라서 drive()란 이름의 함수가 Vehicle과 Car 양쪽에 모두 있을 때 이 둘을 구별해서 호출하려면 (상대적이 아닌) 절대적인 레퍼런스를 이용할 수 박에 없다.
+
+그리고 Car 객체와 바인딩을 하기 위해 Vehicle.drive.call(this)로 호출하게 함.
+
+자바스크립트 언어는 (의사)다혀적 레퍼런스가 필요한 함수마다 명시적 의사다형성 방식의 취약한 연결을 명시적으로 일일이 만들어줄 수 밖에 없다.
+
+결과 적으로 더 복자하고 관리하기 어려운 코드가 된다. 명시적 의사다형성은 가능한 쓰지 말자.
+
+### 사본 혼합
+
+사실 자바스크립트 함수는 (표준적인 방법으로 확실하게) 복사할 수 없다. 복사되는 건 같은 공휴 함수 객체(함수도 객체)를 가리키는 사본 레퍼런스다. (ignition() 같은) 공휴 함수 객체에 프로퍼티를 추가하는 등의 변경을 하면 공유 레퍼런스를 통해 Vehicle/Car 모두에게 영향을 끼친다.
+
+명시적 믹스인은 쓸만한 장치이긴 하지만 강력하지는 않다. 차라리 그냥 무식하게 똑같은 프로퍼티를 각각 두 번씩 정의하는 편이 나을 수도 있다.
+
+명시적 믹스인은 코드 가독성에 도움이 될 때만 조심하여 사용하되 점점 코드가 추적하기 어려워지거나 불필요한 객체 간 의존 관계가 양산될 때 사용을 중단하자.
+
+### 기생 상속
+
+'기생 상속(Pararsitic Inheritance)'은 더글러스 크록포드가 작성한 명시적 믹스인 패턴의 변형. 명시적/암시적 특징을 모두 갖고 있다.
+
+```js
+// "전통적인 자바스크립트 클래스" 'Vehicle'
+function Vehicle() {
+  this.engines = 1;
+}
+Vehicle.prototype.ignition = function () {
+  console.log("엔진을 켠다.");
+};
+Vehicle.prototype.drive = function () {
+  this.ignition();
+  console.log("방향을 맞추고 앞으로 간다!");
+};
+
+// "기생 클래스" 'Car'
+function Car() {
+  // 자동차는 탈것의 하나다.
+  var car = new Vehicle();
+
+  // 자동차에만 해당되는 내용은 수정한다.
+  car.whells = 4;
+
+  // 'Vehicle::drive()'를 가리키는 내부 레퍼런스를 저장한다.
+  var vehDrive = car.drive;
+
+  // 'Vehicle::drive()'를 오버라이드한다.
+  car.drive = function () {
+    vehDrive.call(this);
+    console.log(this.whells + "개의 바퀴로 굴러간다!");
+  };
+  return car;
+}
+
+var myCar = new Car();
+
+myCar.drive();
+// 엔진을 켠다.
+// 방향을 맞추고 앞으로 간다!
+// 4개의 바퀴로 굴러간다!
+```
+
+부모 클래스인 Vehicle(객체)의 정의를 복사한다. 그리고 자식 클래스(객체) 정의에 믹스인 한 뒤 조합된 객체 car를 자식 인스턴스로 넘긴다.
+
+### 4-4-2 암시적 믹스인
+
+암시적 믹스인은 명시적 의사다형성과 밀접한 관계가 있으므로 사용할 때 주의해야 한다.
+
+```js
+var Something = {
+  cool: function () {
+    this.greeting = "Hello World";
+    this.count = this.count ? this.count + 1 : 1;
+  },
+};
+
+Something.cool();
+Something.greeting; // "Hello World"
+Something.count;
+
+var Another = {
+  cool: function () {
+    // 'Something'을 암시적으로 'Another'로 믹스인한다.
+    Something.cool.call(this);
+  },
+};
+
+Another.cool();
+Another.greeting; // "Hello World"
+Another.count; // 1 ('Something'과 상태가 공유되지 않는다.)
+```
+
+this 재바인딩을 십분 활용한 이런 유형의 테크닉은 Something.cool.call(this) 같은 호출이 상대적 레퍼런스가 되지 않아 (그래서 더 유연하긴 함) 불안정하므로 신중히 처리해야 한다.
+
+## 4-5 정리하기
+
+클래스는 디자인 패턴의 일종이다. 자바스크립트에서 클래스의 의미는 다른 언어들과 다르다.
+
+클래스는 복사를 의미한다. 전통적인 클래스는 인스턴스화하면 [클래스->인스턴스]로 복사가 일어난다. 클래스를 상속하면 역시 [부모->자식] 방향으로 복사된다. 다형성은 얼핏 보면 [자식->부모] 방향의 상대적 레퍼런스가 아닐까 싶지만 그냥 복사 작업의 결과물일 뿐이다.
+
+자바스크립트는 객체 간 사본을 자동으로 생성하지 않는다. 믹스인 패턴(명시적/암시적)은 클래스의 복사 기능을 모방하기 위해 종종 쓰이지만 대부분 명시적 의사다형성(OtherObj.methodName.call(this, ...)) 처럼 보기 싫고 취약한 구문이 되어 유지 보수도 어려운 코드가 된다.
+
+명시적 믹스인은 클래스의 복사 기능과 같지 않다. 이는 객체(그리고 함수!) 그 자체가 아니라 단지 공유된 레퍼런스만 복사하기 때문이다. 이런 부분에 유의하지 않으면 고생할 수 있다.
+
+일반적으로 자바스크립트에서 클래스를 모방하는 건 당장 닥친 문제를 해결할 수 있어도 앞으로 터질 시한폭탄을 심어놓는 것과 다름 없다.
+
+```
+
+```
